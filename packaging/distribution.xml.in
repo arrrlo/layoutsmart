@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Layoutsmart</title>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <domains enable_localSystem="true"/>
+    <allowed-os-versions>
+        <os-version min="@MIN_MACOS@"/>
+    </allowed-os-versions>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+    <choice id="default" title="Layoutsmart">
+        <pkg-ref id="@BUNDLE_ID@"/>
+    </choice>
+    <pkg-ref id="@BUNDLE_ID@" version="@VERSION@" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs as root before the app is copied. Quits a running copy so an update replaces it
+# cleanly (the new version is started again by postinstall).
+pkill -x Layoutsmart 2>/dev/null
+exit 0

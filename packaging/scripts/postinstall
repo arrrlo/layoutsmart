@@ -1,0 +1,16 @@
+#!/bin/sh
+# Runs as root after the app has been copied to /Applications.
+APP="/Applications/Layoutsmart.app"
+
+# The command-line tool. (Created here rather than shipped in the package, so the
+# installer never changes the ownership of /usr/local.)
+mkdir -p /usr/local/bin
+ln -sf "$APP/Contents/MacOS/layoutsmart-cli" /usr/local/bin/layoutsmart
+
+# Start the app for the person sitting at the Mac.
+CONSOLE_USER=$(stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+    CONSOLE_UID=$(id -u "$CONSOLE_USER")
+    launchctl asuser "$CONSOLE_UID" sudo -u "$CONSOLE_USER" open "$APP"
+fi
+exit 0
