@@ -50,13 +50,17 @@ func press(_ element: AXUIElement) {
     AXUIElementPerformAction(element, "AXPress" as CFString)
 }
 
-func wait<T>(_ what: String, seconds: Double = 6, _ probe: () -> T?) -> T {
+/// Printed when something never shows up, so a failure on a remote machine can be understood.
+var describeScreen: () -> String = { "" }
+
+// Generous: shared CI machines can take many seconds to put up a first dialog.
+func wait<T>(_ what: String, seconds: Double = 30, _ probe: () -> T?) -> T {
     let deadline = Date().addingTimeInterval(seconds)
     while Date() < deadline {
         if let value = probe() { return value }
         usleep(100_000)
     }
-    fail("timed out waiting for \(what)")
+    fail("timed out waiting for \(what)\n\(describeScreen())")
 }
 
 func check(_ condition: Bool, _ what: String) {
@@ -90,10 +94,23 @@ func statusItem() -> AXUIElement {
 /// Opens the menu and returns its items.
 func openMenu() -> [AXUIElement] {
     press(statusItem())
-    return wait("the menu to open") {
+    let items: [AXUIElement] = wait("the menu to open") {
         let items = all(statusItem(), role: "AXMenuItem")
         return items.isEmpty ? nil : items
     }
+    // Let the menu finish appearing; a click that arrives too early is ignored.
+    usleep(500_000)
+    return items
+}
+
+describeScreen = {
+    let windows = (attribute(app, "AXWindows") as? [AXUIElement]) ?? []
+    let lines = windows.map { window -> String in
+        let buttons = all(window, role: "AXButton").map(title).filter { !$0.isEmpty }
+        return "  window role=\(role(window)) subrole=\((attribute(window, "AXSubrole") as? String) ?? "") title='\(title(window))' buttons=\(buttons)"
+    }
+    let menu = all(statusItem(), role: "AXMenuItem").map(title)
+    return "app running: \(process.isRunning)\nwindows (\(windows.count)):\n\(lines.joined(separator: "\n"))\nmenu items showing: \(menu)"
 }
 
 func dialog() -> AXUIElement {
@@ -109,7 +126,7 @@ func answer(text: String?, button: String) {
         AXUIElementSetAttributeValue(field, "AXValue" as CFString, text as CFString)
     }
     press(wait("the \(button) button") { find(window, role: "AXButton", title: button) })
-    usleep(400_000)
+    usleep(700_000)
 }
 
 print("1. Menu with nothing saved")
