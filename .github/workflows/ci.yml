@@ -156,3 +156,19 @@ jobs:
           pgrep -lx Layoutsmart
       - name: Menu, dialogs and dashboard work (driven through the menu bar icon)
         run: swift scripts/smoke.swift /Applications/Layoutsmart.app/Contents/MacOS/Layoutsmart
+      # When something above fails: what was on screen, and what the app was doing.
+      - name: Collect evidence
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/evidence"
+          screencapture -x "$RUNNER_TEMP/evidence/screen.png" || true
+          ps aux | grep -i '[l]ayoutsmart' > "$RUNNER_TEMP/evidence/processes.txt" || true
+          for pid in $(pgrep -x Layoutsmart); do
+            sample "$pid" 2 -file "$RUNNER_TEMP/evidence/sample-$pid.txt" > /dev/null 2>&1 || true
+          done
+          ls -la "$RUNNER_TEMP/evidence"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: evidence-${{ matrix.os }}
+          path: ${{ runner.temp }}/evidence
