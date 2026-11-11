@@ -5,22 +5,24 @@ use super::state::App;
 use super::{dashboard, main_menu, status};
 use layoutsmart_core::startup;
 use objc2::AnyThread;
-use objc2_app_kit::{NSApplication, NSImage};
+use objc2_app_kit::NSImage;
 use objc2_foundation::{NSBundle, ns_string};
 
-/// Gives AppKit the icon that ships inside the app. Dialogs show the app icon, and
-/// without this the first dialog fetches it from the system's icon service — a round trip
-/// to another process, which also leaves the dialog waiting if that service is not
-/// answering. (A development build has no bundled icon and keeps the default behaviour.)
+/// Registers the icon that ships inside the app under the name AppKit uses for "this
+/// app's icon". Every dialog shows that icon; without this, the first dialog fetches it
+/// from the system's icon service — a round trip to another process, and a dialog that
+/// never appears if that service is not answering (seen on a CI machine). Note that
+/// `setApplicationIconImage` is not enough: it does not change what the name resolves to.
+/// (A development build has no bundled icon and keeps the default behaviour.)
 fn use_bundled_icon(app: &App) {
-    NSBundle::mainBundle()
+    let icon = NSBundle::mainBundle()
         .pathForResource_ofType(Some(ns_string!("AppIcon")), Some(ns_string!("icns")))
         .and_then(|path| NSImage::initWithContentsOfFile(NSImage::alloc(), &path))
-        .iter()
-        // SAFETY: a plain setter, called on the main thread with a valid image.
-        .for_each(|icon| unsafe {
-            NSApplication::sharedApplication(app.mtm).setApplicationIconImage(Some(icon))
+        .inspect(|icon| {
+            icon.setName(Some(ns_string!("NSApplicationIcon")));
         });
+    // Kept for the life of the app, so the name stays registered.
+    app.icon.replace(icon);
 }
 
 fn executable_path() -> String {

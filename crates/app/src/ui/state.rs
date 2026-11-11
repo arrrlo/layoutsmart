@@ -12,7 +12,7 @@ use layoutsmart_core::store::ProfileStore;
 use layoutsmart_macos::{MacSystem, SystemClock, default_store};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSApplication, NSStatusItem};
+use objc2_app_kit::{NSApplication, NSImage, NSStatusItem};
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
 
@@ -24,6 +24,8 @@ pub struct App {
     pub controller: Retained<Controller>,
     /// Kept so the icon stays in the menu bar.
     pub status_item: RefCell<Option<Retained<NSStatusItem>>>,
+    /// The bundled app icon, registered by name for dialogs (see `launch.rs`).
+    pub icon: RefCell<Option<Retained<NSImage>>>,
     /// The menu as last shown; item tags index into it.
     pub menu: RefCell<Rc<Menu>>,
     pub model: RefCell<Dashboard>,
@@ -40,6 +42,7 @@ impl App {
             dialogs: Dialogs::new(mtm),
             controller,
             status_item: RefCell::new(None),
+            icon: RefCell::new(None),
             menu: RefCell::new(Rc::new(Menu::load(&store))),
             model: RefCell::new(Dashboard::open(&store)),
             dashboard: RefCell::new(None),
