@@ -78,37 +78,9 @@ func poll(seconds: Double, _ condition: () -> Bool) -> Bool {
     return false
 }
 
-/// A real click, as a person would make it, in the middle of the element.
-func clickWithMouse(_ element: AXUIElement) {
-    var origin = CGPoint.zero
-    var size = CGSize.zero
-    if let value = attribute(element, "AXPosition") { AXValueGetValue(value as! AXValue, .cgPoint, &origin) }
-    if let value = attribute(element, "AXSize") { AXValueGetValue(value as! AXValue, .cgSize, &size) }
-    let middle = CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
-    for kind in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
-        CGEvent(mouseEventSource: nil, mouseType: kind, mouseCursorPosition: middle, mouseButton: .left)?
-            .post(tap: .cghidEventTap)
-        usleep(120_000)
-    }
-}
-
-/// Some systems acknowledge an accessibility "press" on a menu item without acting on it.
-/// Once that has been seen, menu items are clicked with the mouse instead.
-var menuNeedsMouse = ProcessInfo.processInfo.environment["SMOKE_MOUSE"] != nil
-
-func chooseBlind(_ item: AXUIElement) {
-    if menuNeedsMouse { clickWithMouse(item) } else { press(item) }
-}
-
 /// Chooses a menu item and waits until `done` reports that it took effect.
 func choose(_ item: AXUIElement, _ what: String, until done: () -> Bool) {
-    if !menuNeedsMouse {
-        press(item)
-        if poll(seconds: 6, done) { return }
-        print("  note: an accessibility press on '\(what)' had no effect here; using real mouse clicks for menu items")
-        menuNeedsMouse = true
-    }
-    clickWithMouse(item)
+    press(item)
     if !poll(seconds: 30, done) { fail("choosing '\(what)' from the menu did nothing\n\(describeScreen())") }
 }
 
@@ -209,7 +181,7 @@ check(true, "profile 'smoke test' was written")
 print("4. The menu now lists the profile; clicking it restores without complaint")
 items = openMenu()
 check(items.map(title) == ["Save Window Positions…", "", "smoke test", "", "Open Dashboard…", "", "Quit Layoutsmart"], "menu lists the saved profile")
-chooseBlind(items[2])
+press(items[2])
 usleep(900_000)
 let stray = ((attribute(app, "AXWindows") as? [AXUIElement]) ?? []).filter { find($0, role: "AXButton", title: "OK") != nil }
 check(stray.isEmpty, "restoring shows no error")
