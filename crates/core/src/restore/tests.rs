@@ -458,6 +458,29 @@ fn a_window_saved_as_ordinary_comes_out_of_full_screen() {
 }
 
 #[test]
+fn a_window_that_leaves_a_full_screen_desktop_out_of_view_goes_back_where_it_came_from() {
+    // Measured on a real Mac: the screen stays as it is, and the window returns to the
+    // desktop it was on before — so nothing more has to be done.
+    let rig = Rig::new(two_screens());
+    let notes = rig.sim.window("Notes", "list", "Main", 1, F);
+    let before = rig.save();
+    rig.sim.user_fullscreen(notes, true);
+    rig.sim.user_shows("Main", 2);
+    assert_eq!(rig.sim.row("Main"), "1 [2] 3 F:Notes list");
+
+    assert_eq!(rig.restore().moved, [entry("Notes", "list")]);
+    assert_eq!(
+        rig.sim.actions(),
+        [
+            format!("fullscreen off {notes}"),
+            format!("activate {FRONT_APP}"),
+        ]
+    );
+    assert_eq!(rig.sim.snapshot(), before);
+    assert_eq!(rig.sim.row("Main"), "1 [2] 3");
+}
+
+#[test]
 fn a_window_out_of_full_screen_is_then_put_on_its_desktop() {
     let rig = Rig::new(two_screens());
     let notes = rig.sim.window("Notes", "list", "Main", 3, F);

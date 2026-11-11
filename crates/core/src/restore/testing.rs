@@ -6,7 +6,9 @@
 //! * moving a window onto another screen puts it on that screen's desktop in view, or on
 //!   the ordinary desktop last in view there if a full-screen app is in view;
 //! * entering full screen adds a desktop at the end of the screen's row and shows it;
-//!   leaving removes it, shows the ordinary desktop last in view and puts the window there;
+//! * leaving full screen removes that desktop. If it was in view, the screen shows the
+//!   ordinary desktop last in view and the window goes there; if it was not, the screen
+//!   stays as it is and the window goes back to the desktop it came from;
 //! * a full-screen window cannot be moved;
 //! * the "next desktop" shortcut acts on the screen under the pointer.
 
@@ -54,6 +56,8 @@ struct Window {
     cannot_fullscreen: bool,
     /// Where it returns to when it leaves full screen.
     windowed_frame: Rect,
+    /// The desktop it was on when it entered full screen.
+    came_from: u64,
 }
 
 /// Something that happens once enough time has passed.
@@ -195,6 +199,7 @@ impl Sim {
             refuses_to_move: false,
             cannot_fullscreen: false,
             windowed_frame: frame,
+            came_from: 0,
         });
         id
     }
@@ -274,6 +279,7 @@ impl Sim {
         }
         window.windowed_frame = window.frame;
         window.frame = screen.bounds;
+        window.came_from = window.space;
         window.space = space;
         window.fullscreen = true;
         window.listed = !window.withheld;
@@ -285,9 +291,15 @@ impl Sim {
         let index = self.screen_of_space(window.space);
         let mut screens = self.screens.borrow_mut();
         let screen = &mut screens[index];
+        let in_view = screen.current == window.space;
         screen.row.retain(|space| space.id != window.space);
-        screen.current = screen.last_ordinary;
-        window.space = screen.last_ordinary;
+        let still_there = screen.row.iter().any(|space| space.id == window.came_from);
+        if in_view || !still_there {
+            screen.current = screen.last_ordinary;
+            window.space = screen.last_ordinary;
+        } else {
+            window.space = window.came_from;
+        }
         window.frame = window.windowed_frame;
         window.fullscreen = false;
     }
