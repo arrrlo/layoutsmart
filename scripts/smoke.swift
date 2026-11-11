@@ -69,6 +69,49 @@ func wait<T>(_ what: String, seconds: Double = 30, _ probe: () -> T?) -> T {
     fail("timed out waiting for \(what)\n\(describeScreen())")
 }
 
+func poll(seconds: Double, _ condition: () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        if condition() { return true }
+        usleep(100_000)
+    }
+    return false
+}
+
+/// A real click, as a person would make it, in the middle of the element.
+func clickWithMouse(_ element: AXUIElement) {
+    var origin = CGPoint.zero
+    var size = CGSize.zero
+    if let value = attribute(element, "AXPosition") { AXValueGetValue(value as! AXValue, .cgPoint, &origin) }
+    if let value = attribute(element, "AXSize") { AXValueGetValue(value as! AXValue, .cgSize, &size) }
+    let middle = CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
+    for kind in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
+        CGEvent(mouseEventSource: nil, mouseType: kind, mouseCursorPosition: middle, mouseButton: .left)?
+            .post(tap: .cghidEventTap)
+        usleep(120_000)
+    }
+}
+
+/// Some systems acknowledge an accessibility "press" on a menu item without acting on it.
+/// Once that has been seen, menu items are clicked with the mouse instead.
+var menuNeedsMouse = ProcessInfo.processInfo.environment["SMOKE_MOUSE"] != nil
+
+func chooseBlind(_ item: AXUIElement) {
+    if menuNeedsMouse { clickWithMouse(item) } else { press(item) }
+}
+
+/// Chooses a menu item and waits until `done` reports that it took effect.
+func choose(_ item: AXUIElement, _ what: String, until done: () -> Bool) {
+    if !menuNeedsMouse {
+        press(item)
+        if poll(seconds: 6, done) { return }
+        print("  note: an accessibility press on '\(what)' had no effect here; using real mouse clicks for menu items")
+        menuNeedsMouse = true
+    }
+    clickWithMouse(item)
+    if !poll(seconds: 30, done) { fail("choosing '\(what)' from the menu did nothing\n\(describeScreen())") }
+}
+
 func check(_ condition: Bool, _ what: String) {
     if !condition { fail(what) }
     print("  ok: \(what)")
@@ -91,11 +134,18 @@ try! process.run()
 defer { if process.isRunning { process.terminate() } }
 let app = AXUIElementCreateApplication(process.processIdentifier)
 
-func statusItem() -> AXUIElement {
-    wait("the menu bar icon") {
-        (attribute(app, "AXExtrasMenuBar")).flatMap { children($0 as! AXUIElement).first }
-    }
+// Never hang: whatever happens, stop after a few minutes and say where things stood.
+let limit = Double(ProcessInfo.processInfo.environment["SMOKE_DEADLINE"] ?? "") ?? 240
+DispatchQueue.global().asyncAfter(deadline: .now() + limit) {
+    print("FAIL: still not finished after \(Int(limit)) seconds\n\(describeScreen())")
+    process.terminate()
+    exit(1)
 }
+
+func statusItemNow() -> AXUIElement? {
+    (attribute(app, "AXExtrasMenuBar")).flatMap { children($0 as! AXUIElement).first }
+}
+func statusItem() -> AXUIElement { wait("the menu bar icon") { statusItemNow() } }
 
 /// Opens the menu and returns its items.
 func openMenu() -> [AXUIElement] {
@@ -115,14 +165,17 @@ describeScreen = {
         let buttons = all(window, role: "AXButton").map(title).filter { !$0.isEmpty }
         return "  window role=\(role(window)) subrole=\((attribute(window, "AXSubrole") as? String) ?? "") title='\(title(window))' buttons=\(buttons)"
     }
-    let menu = all(statusItem(), role: "AXMenuItem").map(title)
+    let menu = statusItemNow().map { all($0, role: "AXMenuItem").map(title) } ?? ["(no menu bar icon)"]
     return "last click reported: \(lastPress)\napp running: \(process.isRunning)\nwindows (\(windows.count)):\n\(lines.joined(separator: "\n"))\nmenu items showing: \(menu)"
 }
 
-func dialog() -> AXUIElement {
-    wait("a dialog") {
-        ((attribute(app, "AXWindows") as? [AXUIElement]) ?? []).first { find($0, role: "AXButton", title: "Cancel") != nil || find($0, role: "AXButton", title: "OK") != nil }
-    }
+func openDialog() -> AXUIElement? {
+    ((attribute(app, "AXWindows") as? [AXUIElement]) ?? []).first { find($0, role: "AXButton", title: "Cancel") != nil || find($0, role: "AXButton", title: "OK") != nil }
+}
+func hasDialog() -> Bool { openDialog() != nil }
+func dialog() -> AXUIElement { wait("a dialog") { openDialog() } }
+func dashboardWindow() -> AXUIElement? {
+    ((attribute(app, "AXWindows") as? [AXUIElement]) ?? []).first { title($0) == "Layoutsmart" }
 }
 
 func answer(text: String?, button: String) {
@@ -141,12 +194,12 @@ check(items.map(title) == ["Save Window Positions…", "", "No Saved Profiles", 
 check((attribute(items[2], "AXEnabled") as? Bool) == false, "'No Saved Profiles' is greyed out")
 
 print("2. Save Window Positions… → Cancel")
-press(items[0])
+choose(items[0], "Save Window Positions…", until: hasDialog)
 answer(text: nil, button: "Cancel")
 check(profiles().isEmpty, "cancelling saves nothing")
 
 print("3. Save with an invalid name, then a valid one")
-press(openMenu()[0])
+choose(openMenu()[0], "Save Window Positions…", until: hasDialog)
 answer(text: "bad/name", button: "Save")
 check(profiles().isEmpty, "a name with '/' is refused")
 answer(text: "smoke test", button: "Save")
@@ -156,23 +209,21 @@ check(true, "profile 'smoke test' was written")
 print("4. The menu now lists the profile; clicking it restores without complaint")
 items = openMenu()
 check(items.map(title) == ["Save Window Positions…", "", "smoke test", "", "Open Dashboard…", "", "Quit Layoutsmart"], "menu lists the saved profile")
-press(items[2])
-usleep(700_000)
+chooseBlind(items[2])
+usleep(900_000)
 let stray = ((attribute(app, "AXWindows") as? [AXUIElement]) ?? []).filter { find($0, role: "AXButton", title: "OK") != nil }
 check(stray.isEmpty, "restoring shows no error")
 
 print("5. Saving under an existing name asks before replacing")
-press(openMenu()[0])
+choose(openMenu()[0], "Save Window Positions…", until: hasDialog)
 answer(text: "smoke test", button: "Save")
 answer(text: nil, button: "Cancel")          // "Replace?" → no; back to the name box
 answer(text: nil, button: "Cancel")          // give up
 check(profiles() == ["smoke test"], "declining to replace keeps the profile")
 
 print("6. Dashboard")
-press(openMenu()[4])
-let dashboard: AXUIElement = wait("the dashboard window") {
-    ((attribute(app, "AXWindows") as? [AXUIElement]) ?? []).first { title($0) == "Layoutsmart" }
-}
+choose(openMenu()[4], "Open Dashboard…", until: { dashboardWindow() != nil })
+let dashboard: AXUIElement = wait("the dashboard window") { dashboardWindow() }
 let rows = wait("the profile list") { () -> [AXUIElement]? in
     let found = all(dashboard, role: "AXRow")
     return found.isEmpty ? nil : found
@@ -199,8 +250,7 @@ check((attribute(wait("Rename…") { find(dashboard, role: "AXButton", title: "R
 
 print("9. Quit")
 items = openMenu()
-press(items.last!)
-_ = wait("the app to quit") { process.isRunning ? nil : true }
+choose(items.last!, "Quit Layoutsmart", until: { !process.isRunning })
 check(true, "Quit Layoutsmart ends the app")
 
 try? FileManager.default.removeItem(at: folder)
