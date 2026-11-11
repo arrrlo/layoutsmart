@@ -4,6 +4,7 @@ use crate::displays::same_display_set;
 use crate::matcher::Move;
 use crate::model::DisplayInfo;
 use crate::service::{self, Backend, Error, Restored, Saved};
+use crate::text::plural;
 use crate::windows::LiveWindow;
 use crate::{names, timefmt};
 use std::io::Write;
@@ -103,14 +104,6 @@ pub fn parse(args: &[String]) -> Result<Command, Failure> {
     without_names(&words)
         .or_else(|| with_names(&words))
         .ok_or_else(|| usage_error(args))
-}
-
-fn plural(count: usize, noun: &str) -> String {
-    if count == 1 {
-        format!("1 {noun}")
-    } else {
-        format!("{count} {noun}s")
-    }
 }
 
 fn saved_text(saved: &Saved) -> String {

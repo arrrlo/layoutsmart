@@ -2,10 +2,11 @@
 
 use crate::displays::RawDisplay;
 use crate::geometry::Rect;
-use crate::ports::{Clock, WindowSystem};
+use crate::ports::{Clock, Host, LoginItem, Question, TextPrompt, Ui, WindowSystem};
 use crate::store::ProfileStore;
 use crate::windows::{RawWindow, STANDARD_WINDOW};
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 
 pub struct FakeSystem {
     pub trusted: Cell<bool>,
@@ -121,4 +122,108 @@ pub fn temp_store() -> (tempfile::TempDir, ProfileStore) {
     let dir = tempfile::tempdir().expect("temp dir");
     let store = ProfileStore::new(dir.path().join("profiles"));
     (dir, store)
+}
+
+pub static CLOCK: FixedClock = FixedClock(NOW);
+
+/// What the pretend user does next.
+pub enum Reply {
+    Text(&'static str),
+    Cancel,
+    Yes,
+    No,
+}
+
+/// Answers dialogs from a script and records every dialog shown. When the script runs
+/// out it cancels everything, so no flow can loop forever.
+pub struct ScriptedUi {
+    replies: RefCell<VecDeque<Reply>>,
+    log: RefCell<Vec<String>>,
+}
+
+impl ScriptedUi {
+    pub fn new(replies: Vec<Reply>) -> Self {
+        ScriptedUi {
+            replies: RefCell::new(replies.into()),
+            log: RefCell::new(Vec::new()),
+        }
+    }
+
+    pub fn silent() -> Self {
+        ScriptedUi::new(Vec::new())
+    }
+
+    pub fn log(&self) -> Vec<String> {
+        self.log.borrow().clone()
+    }
+
+    fn next(&self) -> Option<Reply> {
+        self.replies.borrow_mut().pop_front()
+    }
+}
+
+impl Ui for ScriptedUi {
+    fn ask_text(&self, p: &TextPrompt) -> Option<String> {
+        let line = format!("ask[{}|{}|{}|{}]", p.title, p.message, p.value, p.confirm);
+        self.log.borrow_mut().push(line);
+        match self.next() {
+            Some(Reply::Text(text)) => Some(text.to_string()),
+            _ => None,
+        }
+    }
+
+    fn confirm(&self, q: &Question) -> bool {
+        let line = format!(
+            "confirm[{}|{}|{}|{}]",
+            q.title, q.message, q.confirm, q.destructive
+        );
+        self.log.borrow_mut().push(line);
+        matches!(self.next(), Some(Reply::Yes))
+    }
+
+    fn alert(&self, title: &str, message: &str) {
+        self.log
+            .borrow_mut()
+            .push(format!("alert[{title}|{message}]"));
+    }
+
+    fn open_accessibility_settings(&self) {
+        self.log.borrow_mut().push("open-settings".to_string());
+    }
+}
+
+pub struct FakeLogin {
+    pub accepts: bool,
+    pub calls: Cell<u32>,
+}
+
+impl FakeLogin {
+    pub fn new(accepts: bool) -> Self {
+        FakeLogin {
+            accepts,
+            calls: Cell::new(0),
+        }
+    }
+}
+
+impl LoginItem for FakeLogin {
+    fn register(&self) -> bool {
+        self.calls.set(self.calls.get() + 1);
+        self.accepts
+    }
+}
+
+#[derive(Default)]
+pub struct FakeHost {
+    pub log: RefCell<Vec<&'static str>>,
+}
+
+impl Host for FakeHost {
+    fn open_dashboard(&self) {
+        self.log.borrow_mut().push("dashboard");
+    }
+
+    fn quit(&self) {
+        self.log.borrow_mut().push("quit");
+    }
 }

@@ -20,3 +20,44 @@ pub trait Clock {
     /// Seconds since 1970-01-01T00:00:00Z.
     fn unix_seconds(&self) -> u64;
 }
+
+/// A question answered by typing a name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextPrompt {
+    pub title: String,
+    pub message: String,
+    /// Text already in the box.
+    pub value: String,
+    /// Label of the button that accepts (the other button is always Cancel).
+    pub confirm: String,
+}
+
+/// A yes/no question.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Question {
+    pub title: String,
+    pub message: String,
+    pub confirm: String,
+    /// True when confirming throws something away.
+    pub destructive: bool,
+}
+
+/// The dialogs the app can show. The macOS layer displays them; it decides nothing.
+pub trait Ui {
+    /// The typed text, or `None` if the user cancelled.
+    fn ask_text(&self, prompt: &TextPrompt) -> Option<String>;
+    fn confirm(&self, question: &Question) -> bool;
+    fn alert(&self, title: &str, message: &str);
+    fn open_accessibility_settings(&self);
+}
+
+pub trait LoginItem {
+    /// Asks macOS to start the app at login. True if it agreed.
+    fn register(&self) -> bool;
+}
+
+/// Things only the running app can do.
+pub trait Host {
+    fn open_dashboard(&self);
+    fn quit(&self);
+}
