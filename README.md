@@ -52,8 +52,8 @@ Prefer Terminal? This installs the same package without the Gatekeeper detour:
 sudo installer -pkg ~/Downloads/Layoutsmart-*.pkg -target /
 ```
 
-Requires macOS 13 or later, on Intel or Apple Silicon. Every build is installed and
-started automatically on macOS 14, 15 and 26, on both kinds of Mac, before it is released.
+Requires macOS 13 or later, on Intel or Apple Silicon. Before a build is released it is
+installed and exercised automatically on macOS 15 and 26, on both kinds of Mac.
 
 ### Uninstall
 
@@ -167,8 +167,8 @@ callback methods. If you find yourself wanting an `if` there, the logic belongs 
 `crates/core`, with a test.
 
 That code is checked by `cargo xtask smoke`, which drives the real app through its menu
-bar icon (it needs Accessibility permission for your terminal), and by CI installing the
-finished package on five kinds of Mac.
+bar icon (it needs Accessibility permission for your terminal). CI installs the finished
+package on four kinds of Mac and runs the same script there.
 
 Working method: write the test, watch it fail, write the least code that makes it pass,
 tidy up, run `cargo xtask check`. Run `cargo xtask mutants` before you commit.

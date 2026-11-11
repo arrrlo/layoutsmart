@@ -100,8 +100,11 @@ jobs:
       fail-fast: false
       matrix:
         # Every macOS version GitHub offers, on Apple Silicon and on real Intel Macs.
-        os: [macos-14, macos-15, macos-26, macos-15-intel, macos-26-intel]
+        os: [macos-15, macos-26, macos-15-intel, macos-26-intel]
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
       - uses: actions/download-artifact@v8
         with:
           name: installer
@@ -123,13 +126,20 @@ jobs:
           layoutsmart --version
           layoutsmart help | grep -q "save and restore window layouts"
           layoutsmart displays
-          layoutsmart profiles
-      - name: Without Accessibility permission it says so
+      # GitHub's Macs have Accessibility permission, so the real thing can be exercised.
+      - name: Saves, restores, renames and deletes a profile
         run: |
-          set -ux
-          if layoutsmart list 2> list.err; then echo "expected a permission error"; exit 1; fi
-          cat list.err
-          grep -q "Accessibility" list.err
+          set -eux
+          export LAYOUTSMART_DIR="$RUNNER_TEMP/profiles"
+          layoutsmart profiles | grep -q "No saved profiles"
+          layoutsmart list
+          layoutsmart ci save
+          layoutsmart profiles | grep -q "ci "
+          layoutsmart ci restore
+          layoutsmart restore
+          layoutsmart rename ci renamed
+          layoutsmart delete renamed
+          layoutsmart profiles | grep -q "No saved profiles"
       - name: The Intel build runs too (Rosetta)
         if: runner.arch == 'ARM64'
         run: |
@@ -137,9 +147,12 @@ jobs:
           softwareupdate --install-rosetta --agree-to-license
           arch -x86_64 /usr/local/bin/layoutsmart --version
           arch -x86_64 /usr/local/bin/layoutsmart displays
+          arch -x86_64 /usr/local/bin/layoutsmart list
       - name: The menu bar app starts and keeps running
         run: |
           set -ux
           pgrep -x Layoutsmart || open /Applications/Layoutsmart.app
           sleep 8
           pgrep -lx Layoutsmart
+      - name: Menu, dialogs and dashboard work (driven through the menu bar icon)
+        run: swift scripts/smoke.swift /Applications/Layoutsmart.app/Contents/MacOS/Layoutsmart
