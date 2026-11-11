@@ -54,6 +54,9 @@ struct Window {
     stubborn: u32,
     refuses_to_move: bool,
     cannot_fullscreen: bool,
+    /// Asked to go full screen, its app says it is — and nothing else happens.
+    only_claims_fullscreen: bool,
+    claiming: bool,
     /// Where it returns to when it leaves full screen.
     windowed_frame: Rect,
     /// The desktop it was on when it entered full screen.
@@ -198,6 +201,8 @@ impl Sim {
             stubborn: 0,
             refuses_to_move: false,
             cannot_fullscreen: false,
+            only_claims_fullscreen: false,
+            claiming: false,
             windowed_frame: frame,
             came_from: 0,
         });
@@ -238,6 +243,12 @@ impl Sim {
     /// The window's app has no full-screen mode.
     pub fn cannot_fullscreen(&self, id: u32) {
         self.edit(id, |window| window.cannot_fullscreen = true);
+    }
+
+    /// Asked to go full screen, the window's app will say it has, while macOS never makes
+    /// the full-screen desktop (seen on a real Mac).
+    pub fn only_claims_fullscreen(&self, id: u32) {
+        self.edit(id, |window| window.only_claims_fullscreen = true);
     }
 
     /// The window shows on every ordinary desktop of its screen.
@@ -524,7 +535,7 @@ impl Sim {
             window_id: Some(window.id),
             subrole: Some(STANDARD_WINDOW.into()),
             minimized: Some(false),
-            fullscreen: Some(window.fullscreen),
+            fullscreen: Some(window.fullscreen || window.claiming),
             title: Some(window.title.clone()),
             position: Some((window.frame.x, window.frame.y)),
             size: Some((window.frame.width, window.frame.height)),
@@ -692,6 +703,10 @@ impl WindowSystem for Sim {
         self.note(format!("fullscreen {} {id}", if on { "on" } else { "off" }));
         if self.find(id, |window| window.cannot_fullscreen) {
             return false;
+        }
+        if self.find(id, |window| window.only_claims_fullscreen) {
+            self.edit(id, |window| window.claiming = on);
+            return true;
         }
         self.front.set(0);
         if self.fullscreen_lag.get() == 0 {

@@ -27,6 +27,11 @@ fn unknown() -> DesktopMap {
 
 /// One screen showing desktop 2 of: desktop 1 (id 11), desktop 2 (id 12), a full-screen app (id 13).
 fn desktops() -> DesktopMap {
+    desktops_showing(12)
+}
+
+/// The same screen, showing the desktop with this id.
+fn desktops_showing(current: u64) -> DesktopMap {
     let display = RawDisplay {
         name: Some("Main".into()),
         vendor: 1,
@@ -42,7 +47,7 @@ fn desktops() -> DesktopMap {
         &[display],
         &[RawScreen {
             uuid: "U".into(),
-            current: 12,
+            current,
             spaces,
         }],
     )
@@ -182,23 +187,38 @@ fn a_window_on_no_desktop_is_a_background_tab_and_is_left_out() {
 }
 
 #[test]
+fn where_desktops_are_known_only_a_window_on_a_full_screen_desktop_is_full_screen() {
+    // An app says "full screen" the moment it is asked to be, before macOS has made the
+    // full-screen desktop — and keeps saying it for a while if macOS never does.
+    let claims = RawWindow {
+        fullscreen: Some(true),
+        ..on(&[12], 1)
+    };
+    assert!(!live_windows(&[claims], &desktops())[0].fullscreen);
+    let denies = RawWindow {
+        fullscreen: Some(false),
+        ..on(&[13], 1)
+    };
+    assert!(live_windows(&[denies], &desktops())[0].fullscreen);
+}
+
+#[test]
 fn plain_windows_in_view_are_the_ones_version_0_1_handled() {
-    let live = live_windows(
-        &[
-            on(&[12], 1),
-            on(&[11], 2),
-            RawWindow {
-                fullscreen: Some(true),
-                ..on(&[12], 3)
-            },
-        ],
-        &desktops(),
-    );
+    let live = live_windows(&[on(&[12], 1), on(&[11], 2)], &desktops());
     let plain: Vec<bool> = live.iter().map(LiveWindow::is_plain_in_view).collect();
-    // In view; on a hidden desktop; full screen.
-    assert_eq!(plain, [true, false, false]);
+    // In view; on a hidden desktop.
+    assert_eq!(plain, [true, false]);
+    // Full screen, although in view.
+    let full = &live_windows(&[on(&[13], 3)], &desktops_showing(13))[0];
+    assert!(full.place.as_ref().unwrap().showing);
+    assert!(!full.is_plain_in_view());
     // Place unknown (no desktop information): treated as in view.
     assert!(live_windows(&[on(&[], 4)], &unknown())[0].is_plain_in_view());
+    let claims_full_screen = RawWindow {
+        fullscreen: Some(true),
+        ..on(&[], 5)
+    };
+    assert!(!live_windows(&[claims_full_screen], &unknown())[0].is_plain_in_view());
 }
 
 #[test]

@@ -596,6 +596,24 @@ fn an_app_that_cannot_go_full_screen_is_reported_without_waiting() {
 }
 
 #[test]
+fn a_window_that_only_claims_to_be_full_screen_is_reported() {
+    // Seen on a real Mac: the app accepts the request and says it is full screen, but
+    // macOS never makes the full-screen desktop and the window stays where it was.
+    let rig = Rig::new(two_screens());
+    let notes = rig.sim.window("Notes", "list", "Side", 1, S);
+    rig.sim.user_fullscreen(notes, true);
+    rig.save();
+    rig.sim.user_fullscreen(notes, false);
+    rig.sim.only_claims_fullscreen(notes);
+
+    let restored = rig.restore();
+    assert_eq!(restored.moved, []);
+    assert_eq!(restored.failed, [entry("Notes", "list")]);
+    assert_eq!(rig.sim.count("fullscreen"), 1);
+    assert_eq!(rig.sim.where_is(notes), "Side desktop 1");
+}
+
+#[test]
 fn a_full_screen_change_is_waited_for() {
     let rig = Rig::new(two_screens());
     let notes = rig.sim.window("Notes", "list", "Side", 1, S);

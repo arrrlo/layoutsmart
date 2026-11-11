@@ -100,9 +100,14 @@ impl RawWindow {
         let frame = self.frame()?;
         let (app, bundle_id) = names(&self.app, &self.bundle_id, self.pid);
         let place = map.place(&self.spaces);
-        let on_fullscreen_desktop = place
+        // Where its desktop is known, that decides: an app says "full screen" as soon as
+        // it is asked to be, before macOS has made the full-screen desktop, and goes on
+        // saying it for a while if macOS never does.
+        let fullscreen = place
             .as_ref()
-            .is_some_and(|place| place.kind.is_fullscreen());
+            .map_or(self.fullscreen == Some(true), |place| {
+                place.kind.is_fullscreen()
+            });
         Some(LiveWindow {
             handle: self.handle,
             window_id: self.window_id,
@@ -110,7 +115,7 @@ impl RawWindow {
             bundle_id,
             title: self.title.clone().unwrap_or_default(),
             frame,
-            fullscreen: self.fullscreen == Some(true) || on_fullscreen_desktop,
+            fullscreen,
             place,
         })
     }

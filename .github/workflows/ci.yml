@@ -150,14 +150,35 @@ jobs:
       # copy of that profile says it is full screen. Restoring one and then the other must
       # put the window into full screen — and step the screen back to the desktop it was
       # showing — and then take the window out again, back to where it was.
+      #
+      # First the window is asked to go full screen by itself, as its green button would.
+      # A Mac that makes no full-screen desktop even then (GitHub's Intel macOS 26 Macs
+      # did not) cannot be used for this check, and says so.
       - name: Puts a window into full screen and takes it out again
         run: |
           set -eux
           export LAYOUTSMART_DIR="$RUNNER_TEMP/fullscreen"
+          has_fullscreen() { layoutsmart displays | grep -q "desktops:.*F"; }
           swiftc -O scripts/testwindow.swift -o "$RUNNER_TEMP/LayoutsmartTestWindow"
           "$RUNNER_TEMP/LayoutsmartTestWindow" &
+          window=$!
           for attempt in $(seq 1 60); do layoutsmart list | grep -q LayoutsmartTestWindow && break; sleep 1; done
           layoutsmart list
+
+          kill -USR1 "$window"
+          for attempt in $(seq 1 20); do has_fullscreen && break; sleep 1; done
+          layoutsmart list
+          layoutsmart displays
+          if ! has_fullscreen; then
+            echo "::warning::This Mac made no full-screen desktop even when the window itself asked for one, so restoring full screen could not be checked here."
+            kill "$window"
+            exit 0
+          fi
+          kill -USR2 "$window"
+          for attempt in $(seq 1 20); do has_fullscreen || break; sleep 1; done
+          sleep 2
+          layoutsmart displays | grep -q "desktops: \[1\]$"
+
           layoutsmart plain save
           jq '(.windows[] | select(.app == "LayoutsmartTestWindow")) |= (del(.desktop) | .fullscreen = true)' \
             "$LAYOUTSMART_DIR/plain.json" > "$LAYOUTSMART_DIR/full.json"
@@ -169,7 +190,7 @@ jobs:
           layoutsmart list | grep LayoutsmartTestWindow | grep -q "full screen"
           # The screen is back on the desktop it showed, and nothing had to be given up.
           layoutsmart displays | grep -q "desktops: \[1\] F"
-          if grep -q "could not switch desktops" "$RUNNER_TEMP/into.txt"; then exit 1; fi
+          if grep -q "could not\|Could not" "$RUNNER_TEMP/into.txt"; then exit 1; fi
 
           time layoutsmart plain restore
           sleep 3
@@ -178,7 +199,7 @@ jobs:
           layoutsmart list | grep LayoutsmartTestWindow | grep -q "desktop 1"
           layoutsmart displays | grep -q "desktops: \[1\]$"
           layoutsmart plain restore | grep -q "moved 0 windows"
-          pkill -x LayoutsmartTestWindow || true
+          kill "$window"
       - name: The Intel build runs too (Rosetta)
         if: runner.arch == 'ARM64'
         run: |
