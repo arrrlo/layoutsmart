@@ -136,7 +136,8 @@ What that means in practice:
   enters or leaves full screen takes macOS about a second. The menu does not respond
   until it is done. Windows that only need to move or resize are instant, on any desktop.
 - When it has finished, each screen shows what it showed when the profile was saved, and
-  the app you were using is in front again.
+  the app you were using is in front again — unless its windows are now all on desktops
+  that are out of view: bringing it forward would make macOS switch to one of those.
 - macOS only lets other apps reach a window once its desktop has been in view since the
   window's app started. A window that has not been is saved without its title, and on
   restore its desktop is visited once — only if the window has to move.

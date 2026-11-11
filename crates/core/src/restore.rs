@@ -487,7 +487,7 @@ impl<'a> Engine<'a> {
     // ---- afterwards
 
     /// Leaves each screen showing what it showed when the profile was saved, the pointer
-    /// where it was and the user's app in front.
+    /// where it was and the user's app in front (if it can be seen there).
     fn finish(&mut self, scene: &Scene) {
         let layout = self.layout;
         layout
@@ -501,8 +501,26 @@ impl<'a> Engine<'a> {
             .iter()
             .for_each(|(x, y)| self.sys.park_pointer(*x, *y));
         if self.disturbed {
-            self.front.iter().for_each(|pid| self.sys.activate(*pid));
+            let front = self.front.filter(|pid| self.has_window_in_view(*pid));
+            front.iter().for_each(|pid| self.sys.activate(*pid));
         }
+    }
+
+    /// Whether an app has a window on a desktop that is in view. Bringing an app forward
+    /// that has none makes macOS switch to a desktop where it has one — which would undo
+    /// what the screens were just set to show.
+    fn has_window_in_view(&self, pid: i32) -> bool {
+        let in_view: Vec<u64> = self
+            .sys
+            .screens()
+            .iter()
+            .map(|screen| screen.current)
+            .collect();
+        self.sys.server_windows().iter().any(|window| {
+            window.pid == pid
+                && window.layer == 0
+                && window.spaces.iter().any(|id| in_view.contains(id))
+        })
     }
 
     fn report(self) -> Report {

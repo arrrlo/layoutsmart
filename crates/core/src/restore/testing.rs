@@ -10,7 +10,9 @@
 //!   ordinary desktop last in view and the window goes there; if it was not, the screen
 //!   stays as it is and the window goes back to the desktop it came from;
 //! * a full-screen window cannot be moved;
-//! * the "next desktop" shortcut acts on the screen under the pointer.
+//! * the "next desktop" shortcut acts on the screen under the pointer;
+//! * bringing an app to the front that has no window in view makes a screen switch to a
+//!   desktop where it has one.
 
 use crate::desktops::{RawScreen, RawSpace};
 use crate::displays::RawDisplay;
@@ -72,7 +74,8 @@ enum Later {
     Show(usize, u64),
 }
 
-/// The process id of the app the pretend user is working in.
+/// The process id of the app the pretend user is working in. It is not one of the apps
+/// whose windows the tests move about, and always has a small window in view.
 pub const FRONT_APP: i32 = 77;
 
 pub struct Sim {
@@ -619,6 +622,22 @@ impl WindowSystem for Sim {
     }
 
     fn server_windows(&self) -> Vec<ServerWindow> {
+        let users_own = ServerWindow {
+            app: Some("Editor".into()),
+            bundle_id: Some("com.sim.editor".into()),
+            pid: FRONT_APP,
+            window_id: 1,
+            layer: 0,
+            alpha: 1.0,
+            // Too small to be taken for a window worth saving.
+            bounds: Rect::new(0.0, 0.0, 40.0, 20.0),
+            spaces: self
+                .screens
+                .borrow()
+                .iter()
+                .map(|screen| screen.current)
+                .collect(),
+        };
         self.windows
             .borrow()
             .iter()
@@ -632,6 +651,7 @@ impl WindowSystem for Sim {
                 bounds: window.frame,
                 spaces: self.spaces_of(window),
             })
+            .chain([users_own])
             .collect()
     }
 
@@ -799,5 +819,16 @@ impl WindowSystem for Sim {
     fn activate(&self, pid: i32) {
         self.note(format!("activate {pid}"));
         self.front.set(pid);
+        // An app with no window in view pulls a desktop that has one into view.
+        let windows = self.windows.borrow();
+        let mut own = windows.iter().filter(|window| window.pid == pid);
+        let hidden = own.clone().next().map(|window| window.space);
+        if own.any(|window| self.in_view(window)) {
+            return;
+        }
+        if let Some(space) = hidden {
+            let index = self.screen_of_space(space);
+            self.screens.borrow_mut()[index].current = space;
+        }
     }
 }

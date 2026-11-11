@@ -187,6 +187,9 @@ jobs:
           jq '(.windows[] | select(.app == "LayoutsmartTestWindow")) |= (del(.desktop) | .fullscreen = true)' \
             "$LAYOUTSMART_DIR/plain.json" > "$LAYOUTSMART_DIR/full.json"
 
+          # (After that the test window's app is the one in front. Its only window is about
+          # to be on a desktop that is out of view, so it must not be brought forward again.)
+          lsappinfo info -only name "$(lsappinfo front)" || true
           time layoutsmart full restore | tee "$RUNNER_TEMP/into.txt"
           sleep 3
           layoutsmart list

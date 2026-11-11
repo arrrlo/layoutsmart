@@ -893,6 +893,45 @@ fn each_screen_ends_up_showing_what_it_showed_when_the_profile_was_saved() {
 }
 
 #[test]
+fn the_app_in_use_is_not_brought_forward_if_that_would_bring_its_desktop_with_it() {
+    // Seen on a real Mac: the app whose window had just gone full screen was the one in
+    // front before; bringing it forward again pulled its full-screen desktop into view,
+    // although the screen was meant to end on the desktop it showed when saved.
+    let rig = Rig::new(two_screens());
+    let notes = rig.sim.window("Notes", "list", "Side", 1, S);
+    rig.sim.window("Mail", "inbox", "Main", 2, F);
+    rig.sim.user_fullscreen(notes, true);
+    rig.sim.user_shows("Side", 1);
+    let before = rig.save();
+    rig.sim.user_fullscreen(notes, false);
+    // The user is working in Notes (in the Sim an app's process id is its first window's number).
+    rig.sim.front.set(notes as i32);
+
+    assert_eq!(rig.restore().failed, []);
+    assert_eq!(rig.sim.snapshot(), before);
+    assert_eq!(rig.sim.row("Side"), "[1] F:Notes list");
+    assert_eq!(rig.sim.count("activate"), 0);
+}
+
+#[test]
+fn the_app_in_use_is_brought_forward_again_when_it_has_a_window_in_view() {
+    let rig = Rig::new(two_screens());
+    let notes = rig.sim.window("Notes", "list", "Side", 1, S);
+    let other = rig.sim.window("Notes", "other", "Main", 2, F);
+    rig.sim.user_fullscreen(notes, true);
+    rig.sim.user_shows("Side", 1);
+    rig.save();
+    rig.sim.user_fullscreen(notes, false);
+    rig.sim.front.set(notes as i32);
+
+    rig.restore();
+    assert_eq!(rig.sim.row("Side"), "[1] F:Notes list");
+    assert_eq!(rig.sim.where_is(other), "Main desktop 2");
+    assert_eq!(rig.sim.count("activate"), 1);
+    assert_eq!(rig.sim.front.get(), notes as i32);
+}
+
+#[test]
 fn a_screen_that_showed_a_full_screen_app_shows_it_again() {
     let rig = Rig::new(two_screens());
     let other = rig.sim.window("Mail", "inbox", "Side", 1, S);
