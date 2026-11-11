@@ -130,6 +130,7 @@ pub fn shapes(layout: &Layout, canvas: Size) -> Vec<Shape> {
 }
 
 /// The profile list on the left of the dashboard and which row is selected.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Dashboard {
     names: Vec<String>,
     selected: Option<usize>,

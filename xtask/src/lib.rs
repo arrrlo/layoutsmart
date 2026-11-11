@@ -3,6 +3,7 @@
 
 pub mod cmd;
 pub mod gates;
+pub mod lint;
 pub mod runner;
 pub mod sh;
 
@@ -11,9 +12,11 @@ use runner::Runner;
 pub const USAGE: &str = "\
 Layoutsmart build tasks
 
-  cargo xtask check      Fast gates: format, lints, tests (both architectures), coverage, CRAP
+  cargo xtask check      Fast gates: format, lints, tests (both architectures), coverage, CRAP,
+                         lint-shell
   cargo xtask mutants    Mutation tests (extra arguments go to cargo-mutants, e.g. --shard 1/4)
   cargo xtask ci         check, then mutants
+  cargo xtask lint-shell Methods inside define_class! must not contain decisions
   cargo xtask help       This text";
 
 /// Runs one xtask command and returns the process exit code.
@@ -24,6 +27,7 @@ pub fn run(args: &[String], runner: &dyn Runner) -> i32 {
         "check" => gates::check(runner),
         "mutants" => gates::mutants(runner, rest),
         "ci" => gates::check(runner) && gates::mutants(runner, rest),
+        "lint-shell" => gates::lint_shell(runner),
         _ => {
             runner.say(USAGE);
             command == "help"

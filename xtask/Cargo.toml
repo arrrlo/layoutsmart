@@ -8,3 +8,9 @@ authors.workspace = true
 rust-version.workspace = true
 description = "Build tooling for Layoutsmart: quality gates and installer"
 publish = false
+
+[dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]
+tempfile.workspace = true

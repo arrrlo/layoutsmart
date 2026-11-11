@@ -1,0 +1,43 @@
+{
+  "profile": "no monitors",
+  "savedAt": "2026-11-08T21:47:55Z",
+  "displays": [
+    {
+      "name": "Built-in Retina Display",
+      "id": "1552-41049-0",
+      "x": 0,
+      "y": 0,
+      "width": 1512,
+      "height": 982
+    }
+  ],
+  "windows": [
+    {
+      "app": "Safari",
+      "bundleId": "com.apple.Safari",
+      "title": "Reading list",
+      "x": 20,
+      "y": 45,
+      "width": 900,
+      "height": 900
+    },
+    {
+      "app": "Notes",
+      "bundleId": "com.apple.Notes",
+      "title": "Ideas",
+      "x": 940,
+      "y": 45,
+      "width": 552,
+      "height": 520
+    },
+    {
+      "app": "Music",
+      "bundleId": "com.apple.Music",
+      "title": "Evening jazz",
+      "x": 940,
+      "y": 585,
+      "width": 552,
+      "height": 360
+    }
+  ]
+}

@@ -85,3 +85,19 @@ fn dashboard_flag() {
     assert!(!wants_dashboard(&args(&[])));
     assert!(!wants_dashboard(&args(&["dashboard"])));
 }
+
+#[test]
+fn snapshot_flag_names_the_file_to_write() {
+    let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        snapshot_path(&args(&["app", "--snapshot", "out.png"])),
+        Some("out.png")
+    );
+    assert_eq!(
+        snapshot_path(&args(&["--snapshot", "a.png", "b"])),
+        Some("a.png")
+    );
+    assert_eq!(snapshot_path(&args(&["app", "--snapshot"])), None);
+    assert_eq!(snapshot_path(&args(&["app", "out.png"])), None);
+    assert_eq!(snapshot_path(&args(&[])), None);
+}

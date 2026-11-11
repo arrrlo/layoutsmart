@@ -450,6 +450,10 @@ fn types_are_cloneable_and_printable() {
     };
     assert_eq!(scene.clone(), scene);
     assert!(format!("{scene:?}").starts_with("Scene"));
+    let (_dir, store) = temp_store();
+    let dashboard = Dashboard::open(&store);
+    assert_eq!(dashboard.clone(), dashboard);
+    assert!(format!("{dashboard:?}").starts_with("Dashboard"));
     assert_eq!(ShapeKind::Display as usize, 0);
     assert_eq!(ShapeKind::Window as usize, 1);
 }

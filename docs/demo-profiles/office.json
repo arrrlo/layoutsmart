@@ -1,0 +1,69 @@
+{
+  "profile": "office",
+  "savedAt": "2026-11-09T08:02:41Z",
+  "displays": [
+    {
+      "name": "LG UltraFine 5K",
+      "id": "7789-23313-16843009",
+      "x": 0,
+      "y": 0,
+      "width": 2560,
+      "height": 1440
+    },
+    {
+      "name": "Built-in Retina Display",
+      "id": "1552-41049-0",
+      "x": 524,
+      "y": 1440,
+      "width": 1512,
+      "height": 982
+    }
+  ],
+  "windows": [
+    {
+      "app": "Safari",
+      "bundleId": "com.apple.Safari",
+      "title": "Team dashboard",
+      "x": 30,
+      "y": 50,
+      "width": 1240,
+      "height": 1350
+    },
+    {
+      "app": "Xcode",
+      "bundleId": "com.apple.dt.Xcode",
+      "title": "Layoutsmart \u2014 store.rs",
+      "x": 1290,
+      "y": 50,
+      "width": 1240,
+      "height": 900
+    },
+    {
+      "app": "Terminal",
+      "bundleId": "com.apple.Terminal",
+      "title": "ssh build-server",
+      "x": 1290,
+      "y": 970,
+      "width": 1240,
+      "height": 430
+    },
+    {
+      "app": "Mail",
+      "bundleId": "com.apple.mail",
+      "title": "Inbox",
+      "x": 554,
+      "y": 1480,
+      "width": 880,
+      "height": 900
+    },
+    {
+      "app": "Calendar",
+      "bundleId": "com.apple.iCal",
+      "title": "Today",
+      "x": 1454,
+      "y": 1480,
+      "width": 552,
+      "height": 900
+    }
+  ]
+}

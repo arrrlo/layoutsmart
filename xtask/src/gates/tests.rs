@@ -31,6 +31,22 @@ fn check_runs_every_gate_in_order() {
 }
 
 #[test]
+fn check_finishes_with_the_shell_lint() {
+    let runner = FakeRunner::default();
+    assert!(check(&runner));
+    assert!(
+        runner
+            .said()
+            .ends_with("▶ lint-shell: methods inside define_class! must be single calls")
+    );
+}
+
+#[test]
+fn shell_folders_are_the_two_exempt_crates() {
+    assert_eq!(SHELL_DIRS, ["crates/app/src", "crates/macos/src"]);
+}
+
+#[test]
 fn check_stops_at_the_first_failing_gate() {
     let runner = FakeRunner::failing_on("clippy");
     assert!(!check(&runner));

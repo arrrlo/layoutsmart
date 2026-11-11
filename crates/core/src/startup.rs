@@ -18,6 +18,13 @@ pub fn wants_dashboard(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--dashboard")
 }
 
+/// `--snapshot <file>` draws the dashboard into a PNG file and quits (this is how the
+/// picture in the README is made).
+pub fn snapshot_path(args: &[String]) -> Option<&str> {
+    let flag = args.iter().position(|arg| arg == "--snapshot")?;
+    args.get(flag + 1).map(String::as_str)
+}
+
 /// Registers only once: if the user later switches "Open at Login" off in System
 /// Settings, the app must not switch it back on.
 fn register_login_item_once(folder: &Path, login: &dyn LoginItem) {

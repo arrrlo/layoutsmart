@@ -22,6 +22,14 @@ fn mutants_runs_only_mutation_tests() {
 }
 
 #[test]
+fn lint_shell_runs_only_the_lint() {
+    let runner = FakeRunner::default();
+    assert_eq!(run_with(&runner, &["lint-shell"]), 0);
+    assert!(runner.log().is_empty());
+    assert!(runner.said().starts_with("▶ lint-shell"));
+}
+
+#[test]
 fn ci_runs_check_then_mutants() {
     let runner = FakeRunner::default();
     assert_eq!(run_with(&runner, &["ci"]), 0);
@@ -66,7 +74,7 @@ fn unknown_command_prints_usage_and_fails() {
 
 #[test]
 fn usage_lists_every_command() {
-    for word in ["check", "mutants", "ci", "help"] {
+    for word in ["check", "mutants", "ci", "lint-shell", "help"] {
         assert!(USAGE.contains(&format!("cargo xtask {word}")), "{word}");
     }
 }
