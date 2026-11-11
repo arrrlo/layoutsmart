@@ -154,6 +154,14 @@ jobs:
           pgrep -x Layoutsmart || open /Applications/Layoutsmart.app
           sleep 8
           pgrep -lx Layoutsmart
+      # The installed copy registers itself as a login item the first time it runs, and
+      # leaves a marker once macOS has accepted that.
+      - name: Registered itself to start at login
+        run: |
+          set -ux
+          sudo sfltool dumpbtm 2>/dev/null | grep -i -B3 -A14 'layoutsmart' | head -70 || true
+          ls -la "$HOME/.config/layoutsmart/"
+          test -f "$HOME/.config/layoutsmart/.login-item-registered"
       - name: Menu, dialogs and dashboard work (driven through the menu bar icon)
         run: swift scripts/smoke.swift /Applications/Layoutsmart.app/Contents/MacOS/Layoutsmart
       # When something above fails: what was on screen, and what the app was doing.
