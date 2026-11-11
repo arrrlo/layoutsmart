@@ -1,0 +1,18 @@
+[package]
+name = "layoutsmart"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description.workspace = true
+publish = false
+
+[[bin]]
+name = "layoutsmart-cli"
+path = "src/bin/layoutsmart-cli.rs"
+
+[dependencies]
+layoutsmart-core.workspace = true
+layoutsmart-macos.workspace = true
