@@ -159,21 +159,25 @@ jobs:
           set -eux
           export LAYOUTSMART_DIR="$RUNNER_TEMP/fullscreen"
           has_fullscreen() { layoutsmart displays | grep -q "desktops:.*F"; }
+          fullscreen_in_view() { layoutsmart displays | grep -q "desktops:.*\[F\]"; }
           swiftc -O scripts/testwindow.swift -o "$RUNNER_TEMP/LayoutsmartTestWindow"
           "$RUNNER_TEMP/LayoutsmartTestWindow" &
           window=$!
           for attempt in $(seq 1 60); do layoutsmart list | grep -q LayoutsmartTestWindow && break; sleep 1; done
           layoutsmart list
 
+          # (The change is over when the screen shows the new desktop; asking the window to
+          # leave before that does nothing.)
           kill -USR1 "$window"
-          for attempt in $(seq 1 20); do has_fullscreen && break; sleep 1; done
+          for attempt in $(seq 1 20); do fullscreen_in_view && break; sleep 1; done
           layoutsmart list
           layoutsmart displays
-          if ! has_fullscreen; then
+          if ! fullscreen_in_view; then
             echo "::warning::This Mac made no full-screen desktop even when the window itself asked for one, so restoring full screen could not be checked here."
             kill "$window"
             exit 0
           fi
+          sleep 2
           kill -USR2 "$window"
           for attempt in $(seq 1 20); do has_fullscreen || break; sleep 1; done
           sleep 2
