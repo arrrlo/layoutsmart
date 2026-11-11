@@ -1,0 +1,9 @@
+# CRAP gate: every function must score 10 or less.
+#   CRAP = complexity² × (1 − coverage)³ + complexity
+# Functions with no coverage data (the macOS shell) count as 0% covered,
+# which limits them to one decision each (complexity 2 → CRAP 6).
+threshold = 10.0
+fail-above = true
+missing = "pessimistic"
+# Test code is not product code.
+exclude = ["**/tests.rs", "**/testing.rs"]

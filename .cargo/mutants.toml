@@ -1,0 +1,10 @@
+# Mutation testing covers all product logic. The thin macOS shell is exempt
+# (it has no unit tests by design; see README "Contributing").
+exclude_globs = [
+    "crates/macos/**",
+    "crates/app/src/**",
+    "xtask/src/sh.rs",
+    "xtask/src/main.rs",
+    "**/tests.rs",
+    "**/testing.rs",
+]

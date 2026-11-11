@@ -1,0 +1,12 @@
+# Build output
+/target/
+/dist/
+mutants.out*/
+*.profraw
+.DS_Store
+
+# Claude / AI assistant files — never commit
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.mcp.json
