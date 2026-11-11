@@ -1,6 +1,8 @@
 //! The Accessibility API: the only way to see and move other apps' windows.
 
 use crate::apps::App;
+use crate::private::functions;
+use crate::spaces;
 use layoutsmart_core::geometry::Rect;
 use layoutsmart_core::windows::RawWindow;
 use objc2_application_services::{
@@ -8,8 +10,10 @@ use objc2_application_services::{
     AXValueType, kAXTrustedCheckOptionPrompt,
 };
 use objc2_core_foundation::{
-    CFArray, CFBoolean, CFDictionary, CFRetained, CFString, CFType, CGPoint, CGSize, Type,
+    CFArray, CFBoolean, CFData, CFDictionary, CFRetained, CFString, CFType, CGPoint, CGSize, Type,
 };
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::ptr::{self, NonNull};
 
@@ -135,13 +139,29 @@ fn size(values: &Values, index: usize) -> Option<(f64, f64)> {
     ok.then_some((size.width, size.height))
 }
 
+/// The window server's number for the window this element is (or is part of).
+pub fn window_id(element: &AXUIElement) -> Option<u32> {
+    let mut id = 0u32;
+    functions()
+        .window_of_element
+        // SAFETY: `id` is a valid place for the answer.
+        .map(|window_of_element| unsafe { window_of_element(element, &mut id) })
+        .filter(|error| *error == AXError::Success)
+        .map(|_| id)
+}
+
 /// Reports a window exactly as macOS describes it. The core decides what to make of it.
+/// (The handle is filled in by the caller, who knows where the element is kept.)
 pub fn read_window(element: &AXUIElement, app: &App) -> RawWindow {
     let values = batched(element).unwrap_or_else(|| one_by_one(element));
+    let window_id = window_id(element);
     RawWindow {
         app: app.name.clone(),
         bundle_id: app.bundle_id.clone(),
         pid: app.pid,
+        handle: 0,
+        window_id,
+        spaces: window_id.map(spaces::of_window).unwrap_or_default(),
         subrole: string(&values, 0),
         minimized: boolean(&values, 1),
         fullscreen: boolean(&values, 2),
@@ -164,6 +184,52 @@ pub fn windows_of(pid: i32) -> Vec<CFRetained<AXUIElement>> {
         .and_then(|value| value.downcast::<CFArray>().ok())
         .map(elements)
         .unwrap_or_default()
+}
+
+/// The most element numbers tried per app. An app hands numbers out in order as its
+/// windows and their parts are first listed; windows usually have numbers under 100.
+const SCAN_LIMIT: u64 = 2000;
+
+/// The token macOS uses to address element `number` of process `pid`.
+fn token(pid: i32, number: u64) -> CFRetained<CFData> {
+    let mut bytes = [0u8; 20];
+    bytes[0..4].copy_from_slice(&pid.to_ne_bytes());
+    bytes[8..12].copy_from_slice(&0x636f_636f_i32.to_ne_bytes());
+    bytes[12..20].copy_from_slice(&number.to_ne_bytes());
+    CFData::from_bytes(&bytes)
+}
+
+fn numbered_element(pid: i32, number: u64) -> Option<CFRetained<AXUIElement>> {
+    functions()
+        .element_for_token
+        // SAFETY: the token has the layout the function expects; an unknown number just
+        // gives an element that answers nothing.
+        .and_then(|element_for_token| unsafe { element_for_token(&token(pid, number)) })
+}
+
+fn is_window(element: &AXUIElement) -> bool {
+    attribute(element, "AXRole")
+        .and_then(|role| role.downcast::<CFString>().ok())
+        .is_some_and(|role| role.to_string() == "AXWindow")
+}
+
+/// Looks for the windows with these window-server numbers among the app's numbered
+/// elements, and stops as soon as all are found. This reaches windows on desktops that
+/// are not in view — but only ones the app has listed at some earlier time (see
+/// CLAUDE.md, "Seeing windows").
+pub fn numbered_windows(pid: i32, wanted: &[u32]) -> Vec<CFRetained<AXUIElement>> {
+    // A window's parts (buttons, text fields) have numbers too and report the same
+    // window number, so only the window element itself is taken.
+    let missing: RefCell<HashSet<u32>> = RefCell::new(wanted.iter().copied().collect());
+    (0..SCAN_LIMIT)
+        .take_while(|_| !missing.borrow().is_empty())
+        .filter_map(|number| numbered_element(pid, number))
+        .filter(|element| window_id(element).is_some_and(|id| missing.borrow().contains(&id)))
+        .filter(|element| is_window(element))
+        .inspect(|element| {
+            window_id(element).map(|id| missing.borrow_mut().remove(&id));
+        })
+        .collect()
 }
 
 fn set(element: &AXUIElement, name: &str, kind: AXValueType, value: NonNull<c_void>) -> bool {

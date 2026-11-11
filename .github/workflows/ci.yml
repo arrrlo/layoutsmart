@@ -126,6 +126,12 @@ jobs:
           layoutsmart --version
           layoutsmart help | grep -q "save and restore window layouts"
           layoutsmart displays
+      # Seeing other desktops relies on undocumented macOS functions. This proves they
+      # exist and answer on this macOS version.
+      - name: Desktops are visible to it
+        run: |
+          set -eux
+          layoutsmart displays | grep "desktops:"
       # GitHub's Macs have Accessibility permission, so the real thing can be exercised.
       - name: Saves, restores, renames and deletes a profile
         run: |

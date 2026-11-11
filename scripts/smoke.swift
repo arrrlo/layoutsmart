@@ -3,16 +3,24 @@
 //
 //   swift scripts/smoke.swift <path to layoutsmart-app binary>
 //
-// Local use only: the terminal running it needs Accessibility permission, and dialogs
-// will flash on screen for a few seconds. Profiles go to a temporary folder.
+// Needs a desktop session: the terminal running it needs Accessibility permission, the
+// menu bar must be showing (no full-screen app in front), and dialogs will flash on screen
+// for a few seconds. Leave the Mac alone while it runs. Profiles go to a temporary folder.
 
 import ApplicationServices
 import Foundation
 
 setvbuf(stdout, nil, _IONBF, 0)
 
+/// Set once the app has been started, so a failure can record what the app was doing and
+/// then stop it on the way out.
+var sampleApp: () -> String = { "" }
+var stopApp: () -> Void = {}
+
 func fail(_ message: String) -> Never {
     print("FAIL: \(message)")
+    print(sampleApp())
+    stopApp()
     exit(1)
 }
 
@@ -103,7 +111,24 @@ let process = Process()
 process.executableURL = URL(fileURLWithPath: CommandLine.arguments[1])
 process.environment = ProcessInfo.processInfo.environment.merging(["LAYOUTSMART_DIR": folder.path]) { $1 }
 try! process.run()
-defer { if process.isRunning { process.terminate() } }
+stopApp = { if process.isRunning { process.terminate() } }
+// What the app's main thread is doing, when something goes wrong: the usual cause of a
+// failure here is the app being stuck somewhere, and this says where.
+sampleApp = {
+    guard process.isRunning else { return "(the app is no longer running)" }
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("layoutsmart-smoke-sample-\(process.processIdentifier).txt").path
+    let sample = Process()
+    sample.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+    sample.arguments = ["\(process.processIdentifier)", "1", "-file", file]
+    sample.standardOutput = FileHandle.nullDevice
+    sample.standardError = FileHandle.nullDevice
+    guard (try? sample.run()) != nil else { return "(could not sample the app)" }
+    sample.waitUntilExit()
+    let text = (try? String(contentsOfFile: file, encoding: .utf8)) ?? ""
+    let main = text.components(separatedBy: "\n").drop { !$0.contains("com.apple.main-thread") }.prefix { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    return "what the app was doing (full sample: \(file)):\n" + main.prefix(70).joined(separator: "\n")
+}
+defer { stopApp() }
 let app = AXUIElementCreateApplication(process.processIdentifier)
 
 // Never hang: whatever happens, stop after a few minutes and say where things stood.
@@ -117,7 +142,9 @@ DispatchQueue.global().asyncAfter(deadline: .now() + limit) {
 func statusItemNow() -> AXUIElement? {
     (attribute(app, "AXExtrasMenuBar")).flatMap { children($0 as! AXUIElement).first }
 }
-func statusItem() -> AXUIElement { wait("the menu bar icon") { statusItemNow() } }
+func statusItem() -> AXUIElement {
+    wait("the menu bar icon — if a full-screen app is in front, macOS hides the menu bar and the icon cannot be reached; click an ordinary window and run this again") { statusItemNow() }
+}
 
 /// Opens the menu and returns its items.
 func openMenu() -> [AXUIElement] {

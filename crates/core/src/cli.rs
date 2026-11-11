@@ -1,9 +1,11 @@
 //! The `layoutsmart` command line: arguments in, text and an exit code out.
 
+use crate::desktops::{Kind, ScreenRow};
 use crate::displays::same_display_set;
+use crate::geometry::Rect;
 use crate::matcher::Move;
 use crate::model::DisplayInfo;
-use crate::service::{self, Backend, Error, Restored, Saved};
+use crate::service::{self, Backend, Error, Inventory, Restored, Saved};
 use crate::text::plural;
 use crate::windows::LiveWindow;
 use crate::{names, timefmt};
@@ -142,34 +144,76 @@ fn restored_text(restored: &Restored) -> String {
     text
 }
 
-fn list_text(windows: &[LiveWindow]) -> String {
-    windows
+const UNREACHED_NOTE: &str = "(not reachable until that desktop has been in view)";
+
+fn window_row(app: &str, frame: Rect, place: &str, title: &str) -> String {
+    format!(
+        "{:<24} {:>6.0},{:<6.0} {:>5.0}x{:<5.0}  {:<46}  {}\n",
+        app, frame.x, frame.y, frame.width, frame.height, place, title
+    )
+}
+
+/// Screen and desktop; just "full screen" when macOS tells nothing about desktops.
+fn place_text(window: &LiveWindow) -> String {
+    match (&window.place, window.fullscreen) {
+        (Some(place), _) => place.label(),
+        (None, true) => "full screen".to_string(),
+        (None, false) => String::new(),
+    }
+}
+
+fn list_text(inventory: &Inventory) -> String {
+    let reachable = inventory
+        .windows
         .iter()
-        .map(|w| {
-            format!(
-                "{:<24} {:>6.0},{:<6.0} {:>5.0}x{:<5.0}  {}\n",
-                w.app, w.frame.x, w.frame.y, w.frame.width, w.frame.height, w.title
-            )
+        .map(|w| window_row(&w.app, w.frame, &place_text(w), &w.title));
+    let unreached = inventory
+        .unreached
+        .iter()
+        .map(|w| window_row(&w.app, w.frame, &w.place.label(), UNREACHED_NOTE));
+    reachable.chain(unreached).collect()
+}
+
+/// `1 [2] F 3`: desktops by number, `F` for a full-screen app, brackets around the one in view.
+fn desktops_row(row: &ScreenRow) -> String {
+    let cells: Vec<String> = row
+        .kinds
+        .iter()
+        .enumerate()
+        .map(|(index, kind)| {
+            let cell = match kind {
+                Kind::Desktop(number) => number.to_string(),
+                Kind::FullScreen => "F".to_string(),
+            };
+            if row.showing == Some(index) {
+                format!("[{cell}]")
+            } else {
+                cell
+            }
         })
-        .collect()
+        .collect();
+    format!("    desktops: {}\n", cells.join(" "))
 }
 
 fn displays_text(backend: &Backend) -> String {
     let displays = service::displays(backend);
-    let mut text: String = displays
-        .iter()
-        .map(|d| {
-            format!(
-                "{:<28} id={:<24} origin={:.0},{:.0} size={:.0}x{:.0}\n",
-                d.name, d.id, d.x, d.y, d.width, d.height
-            )
-        })
-        .collect();
+    let desktops = service::desktop_map(backend);
+    let mut text = String::new();
+    for d in &displays {
+        text.push_str(&format!(
+            "{:<28} id={:<24} origin={:.0},{:.0} size={:.0}x{:.0}\n",
+            d.name, d.id, d.x, d.y, d.width, d.height
+        ));
+        text.extend(desktops.row(&d.id).map(desktops_row));
+    }
     let matching = backend.store.profile_for(&displays);
     text.push_str(&format!(
         "Matching profile: {}\n",
         matching.as_deref().unwrap_or("none")
     ));
+    if desktops.is_known() {
+        text.push_str("Desktops: [ ] = in view, F = a full-screen app.\n");
+    }
     text
 }
 
@@ -212,7 +256,7 @@ fn execute(command: &Command, backend: &Backend) -> Result<String, Error> {
         Command::Restore(name) => {
             service::restore_or_matching(backend, name.as_deref()).map(|r| restored_text(&r))
         }
-        Command::List => service::windows(backend).map(|windows| list_text(&windows)),
+        Command::List => service::inventory(backend).map(|all| list_text(&all)),
         Command::Displays => Ok(displays_text(backend)),
         Command::Profiles => Ok(profiles_text(backend)),
         Command::Rename(old, new) => {

@@ -1,5 +1,6 @@
 //! The operations behind both the CLI and the menu bar app.
 
+use crate::desktops::DesktopMap;
 use crate::displays::display_infos;
 use crate::matcher::{Move, plan_restore};
 use crate::model::{DisplayInfo, Layout, WindowInfo};
@@ -7,7 +8,7 @@ use crate::names::{self, NameError};
 use crate::ports::{Clock, WindowSystem};
 use crate::store::{ProfileStore, StoreError};
 use crate::timefmt::iso8601;
-use crate::windows::{LiveWindow, live_windows};
+use crate::windows::{LiveWindow, Unreached, live_windows, unreached};
 use std::fmt;
 use std::path::PathBuf;
 
@@ -84,9 +85,49 @@ pub fn displays(backend: &Backend) -> Vec<DisplayInfo> {
     display_infos(&backend.sys.displays())
 }
 
-pub fn windows(backend: &Backend) -> Result<Vec<LiveWindow>, Error> {
+/// Which desktop of which screen each desktop id stands for.
+pub fn desktop_map(backend: &Backend) -> DesktopMap {
+    DesktopMap::new(&backend.sys.displays(), &backend.sys.screens())
+}
+
+/// Everything open right now, on every desktop.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inventory {
+    /// Windows that can be read and moved.
+    pub windows: Vec<LiveWindow>,
+    /// Windows that exist but cannot be reached until their desktop has been in view.
+    pub unreached: Vec<Unreached>,
+    pub desktops: DesktopMap,
+}
+
+pub fn inventory(backend: &Backend) -> Result<Inventory, Error> {
     require_trust(backend)?;
-    Ok(live_windows(&backend.sys.windows()))
+    let desktops = desktop_map(backend);
+    let server = backend.sys.server_windows();
+    let mut raw = backend.sys.windows();
+    // Windows the window server knows but their apps did not list get a second,
+    // costlier look.
+    let missing: Vec<(i32, u32)> = unreached(&raw, &server, &desktops)
+        .iter()
+        .map(|window| (window.pid, window.window_id))
+        .collect();
+    if !missing.is_empty() {
+        raw.extend(backend.sys.numbered_windows(&missing));
+    }
+    Ok(Inventory {
+        windows: live_windows(&raw, &desktops),
+        unreached: unreached(&raw, &server, &desktops),
+        desktops,
+    })
+}
+
+/// The windows version 0.1 handled: ordinary ones on the desktops in view.
+pub fn windows(backend: &Backend) -> Result<Vec<LiveWindow>, Error> {
+    let all = inventory(backend)?.windows;
+    Ok(all
+        .into_iter()
+        .filter(LiveWindow::is_plain_in_view)
+        .collect())
 }
 
 /// The profile saved with the displays that are connected right now, if any.

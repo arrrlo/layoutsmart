@@ -1,11 +1,12 @@
 //! The real implementations of the core's ports.
 
-use crate::{apps, ax, screens};
+use crate::{apps, ax, screens, server, spaces};
+use layoutsmart_core::desktops::RawScreen;
 use layoutsmart_core::displays::RawDisplay;
 use layoutsmart_core::geometry::Rect;
 use layoutsmart_core::ports::{Clock, WindowSystem};
 use layoutsmart_core::store::{ProfileStore, default_dir};
-use layoutsmart_core::windows::RawWindow;
+use layoutsmart_core::windows::{RawWindow, ServerWindow};
 use objc2_application_services::AXUIElement;
 use objc2_core_foundation::CFRetained;
 use std::cell::RefCell;
@@ -15,7 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 type Element = CFRetained<AXUIElement>;
 
 pub struct MacSystem {
-    /// The windows found by the last `windows()` call; `set_frame` handles index into it.
+    /// Every window handed to the core since the last `windows()` call; a handle is an
+    /// index into this list.
     elements: RefCell<Vec<Element>>,
 }
 
@@ -25,6 +27,21 @@ impl MacSystem {
         MacSystem {
             elements: RefCell::new(Vec::new()),
         }
+    }
+
+    /// Keeps the elements and gives each window its handle, continuing after those
+    /// already kept.
+    fn keep(&self, found: Vec<(Element, RawWindow)>) -> Vec<RawWindow> {
+        let first = self.elements.borrow().len();
+        let (elements, raw): (Vec<Element>, Vec<RawWindow>) = found.into_iter().unzip();
+        self.elements.borrow_mut().extend(elements);
+        raw.into_iter()
+            .enumerate()
+            .map(|(index, window)| RawWindow {
+                handle: first + index,
+                ..window
+            })
+            .collect()
     }
 }
 
@@ -41,8 +58,8 @@ struct Found(Vec<(Element, RawWindow)>);
 // token); Core Foundation reference counting is thread-safe, so it may change threads.
 unsafe impl Send for Found {}
 
-fn windows_of(app: &apps::App) -> Found {
-    let windows = ax::windows_of(app.pid)
+fn described(elements: Vec<Element>, app: &apps::App) -> Found {
+    let windows = elements
         .into_iter()
         .map(|element| {
             let raw = ax::read_window(&element, app);
@@ -52,13 +69,22 @@ fn windows_of(app: &apps::App) -> Found {
     Found(windows)
 }
 
+/// The windows the app lists itself.
+fn listed(app: &apps::App) -> Found {
+    described(ax::windows_of(app.pid), app)
+}
+
 /// Every app answers over its own connection, and the first answer alone takes 10–25 ms,
 /// so all apps are asked at the same time. Results keep the order of `apps`.
-fn all_windows(apps: &[apps::App]) -> Vec<(Element, RawWindow)> {
+fn from_all<'a>(
+    apps: &'a [apps::App],
+    ask: impl Fn(&'a apps::App) -> Found + Sync,
+) -> Vec<(Element, RawWindow)> {
+    let ask = &ask;
     std::thread::scope(|scope| {
         let workers: Vec<_> = apps
             .iter()
-            .map(|app| scope.spawn(move || windows_of(app)))
+            .map(|app| scope.spawn(move || ask(app)))
             .collect();
         workers
             .into_iter()
@@ -78,10 +104,32 @@ impl WindowSystem for MacSystem {
     }
 
     fn windows(&self) -> Vec<RawWindow> {
-        let (elements, raw): (Vec<Element>, Vec<RawWindow>) =
-            all_windows(&apps::regular_apps()).into_iter().unzip();
-        self.elements.replace(elements);
-        raw
+        self.elements.borrow_mut().clear();
+        self.keep(from_all(&apps::regular_apps(), listed))
+    }
+
+    fn numbered_windows(&self, wanted: &[(i32, u32)]) -> Vec<RawWindow> {
+        let apps: Vec<apps::App> = apps::regular_apps()
+            .into_iter()
+            .filter(|app| wanted.iter().any(|(pid, _)| *pid == app.pid))
+            .collect();
+        let found = from_all(&apps, |app| {
+            let ids: Vec<u32> = wanted
+                .iter()
+                .filter(|(pid, _)| *pid == app.pid)
+                .map(|(_, id)| *id)
+                .collect();
+            described(ax::numbered_windows(app.pid, &ids), app)
+        });
+        self.keep(found)
+    }
+
+    fn server_windows(&self) -> Vec<ServerWindow> {
+        server::windows(&apps::regular_apps())
+    }
+
+    fn screens(&self) -> Vec<RawScreen> {
+        spaces::screens()
     }
 
     fn set_frame(&self, handle: usize, frame: Rect) -> bool {

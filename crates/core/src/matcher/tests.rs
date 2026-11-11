@@ -14,10 +14,13 @@ fn saved(bundle: &str, title: &str, x: f64) -> WindowInfo {
 fn live(handle: usize, bundle: &str, title: &str, x: f64) -> LiveWindow {
     LiveWindow {
         handle,
+        window_id: None,
         app: format!("{bundle} app"),
         bundle_id: bundle.into(),
         title: title.into(),
         frame: at(x),
+        fullscreen: false,
+        place: None,
     }
 }
 

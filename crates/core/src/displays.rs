@@ -10,6 +10,8 @@ pub struct RawDisplay {
     pub vendor: u32,
     pub model: u32,
     pub serial: u32,
+    /// The identifier macOS uses for this display in its list of desktops, if known.
+    pub uuid: Option<String>,
     /// Global, top-left-origin bounds (the same space window positions use).
     pub bounds: Rect,
 }

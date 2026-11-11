@@ -3,6 +3,7 @@
 
 pub mod cli;
 pub mod dashboard;
+pub mod desktops;
 pub mod displays;
 pub mod flows;
 pub mod geometry;

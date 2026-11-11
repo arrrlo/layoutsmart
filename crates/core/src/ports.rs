@@ -1,18 +1,29 @@
 //! What the core needs from the outside world. The macOS layer implements these;
 //! tests use fakes.
 
+use crate::desktops::RawScreen;
 use crate::displays::RawDisplay;
 use crate::geometry::Rect;
-use crate::windows::RawWindow;
+use crate::windows::{RawWindow, ServerWindow};
 
 pub trait WindowSystem {
     /// Whether macOS lets this process see and move other apps' windows (Accessibility).
     /// With `prompt`, macOS may show its own permission dialog.
     fn is_trusted(&self, prompt: bool) -> bool;
     fn displays(&self) -> Vec<RawDisplay>;
-    /// Every window of every regular app, exactly as reported.
+    /// The windows every regular app lists, exactly as reported. macOS lists a window only
+    /// while its desktop is in view.
     fn windows(&self) -> Vec<RawWindow>;
-    /// Moves and resizes the window at index `handle` of the last `windows()` result.
+    /// Looks for these windows — `(process id, window-server number)` — by addressing
+    /// their apps' elements by number, which is how a window on a desktop that is not in
+    /// view can be reached. Costly (up to a couple of thousand small requests per app), so
+    /// asked only for windows known to be missing. Returns the ones found.
+    fn numbered_windows(&self, wanted: &[(i32, u32)]) -> Vec<RawWindow>;
+    /// Every window the window server lists for regular apps (all desktops; frames only).
+    fn server_windows(&self) -> Vec<ServerWindow>;
+    /// The desktops of each screen. Empty when macOS does not tell.
+    fn screens(&self) -> Vec<RawScreen>;
+    /// Moves and resizes the window with this `handle` (from `windows()` or `numbered_windows()`).
     fn set_frame(&self, handle: usize, frame: Rect) -> bool;
 }
 

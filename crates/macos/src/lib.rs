@@ -5,7 +5,11 @@
 
 mod apps;
 mod ax;
+mod plist;
+mod private;
 mod screens;
+mod server;
+mod spaces;
 mod system;
 
 pub use system::{MacSystem, SystemClock, default_store};

@@ -257,6 +257,80 @@ fn list_shows_one_aligned_line_per_window() {
     assert!(err.contains("Accessibility"));
 }
 
+/// DELL shows desktop 2 of two; Built-in shows a full-screen app. See the service tests.
+fn desk_with_desktops() -> FakeSystem {
+    let mut sys = desk();
+    sys.screens = vec![
+        screen(20, 2, &[(1, false), (2, false)]),
+        screen(10, 5, &[(5, true)]),
+    ];
+    sys.windows[0].window_id = Some(100);
+    sys.windows[0].spaces = vec![2];
+    sys.windows[1].window_id = Some(101);
+    sys.windows[1].spaces = vec![5];
+    sys.windows[1].fullscreen = Some(true);
+    sys.windows[2].window_id = Some(102);
+    sys.windows[2].spaces = vec![1];
+    sys.server = vec![
+        server_window("Safari", 100, &[2], 100.0),
+        server_window("Notes", 103, &[1], 700.0),
+    ];
+    sys
+}
+
+#[test]
+fn list_says_where_each_window_is_and_which_cannot_be_reached_yet() {
+    let (_dir, store) = temp_store();
+    let (code, out, _) = cli(&desk_with_desktops(), &store, &["list"]);
+    assert_eq!(code, 0);
+    let pad = |text: &str| format!("{text:<46}");
+    assert_eq!(
+        out,
+        format!(
+            "Safari                      100,50       800x600    {}  Apple\n\
+             Ghostty                    2000,50       800x600    {}  zsh\n\
+             Mail                        500,50       800x600    {}  Inbox\n\
+             Notes                       700,50       800x600    {}  (not reachable until that desktop has been in view)\n",
+            pad("DELL · desktop 2"),
+            pad("Built-in · full screen"),
+            pad("DELL · desktop 1 (hidden)"),
+            pad("DELL · desktop 1 (hidden)"),
+        )
+    );
+}
+
+#[test]
+fn list_marks_full_screen_even_without_desktop_information() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk();
+    sys.windows[1].fullscreen = Some(true);
+    let (_, out, _) = cli(&sys, &store, &["list"]);
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(lines[1].contains("  full screen  "), "{}", lines[1]);
+    assert!(!lines[0].contains("full screen"));
+    assert_eq!(lines[0].find("Apple"), lines[1].find("zsh"));
+}
+
+#[test]
+fn displays_shows_each_screens_row_of_desktops() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk_with_desktops();
+    sys.screens = vec![
+        screen(20, 12, &[(11, false), (12, false), (13, true), (14, false)]),
+        screen(10, 5, &[(5, true), (6, false)]),
+    ];
+    let (code, out, _) = cli(&sys, &store, &["displays"]);
+    assert_eq!(code, 0);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 6, "{out}");
+    assert!(lines[0].starts_with("Built-in"));
+    assert_eq!(lines[1], "    desktops: [F] 1");
+    assert!(lines[2].starts_with("DELL"));
+    assert_eq!(lines[3], "    desktops: 1 [2] F 3");
+    assert_eq!(lines[4], "Matching profile: none");
+    assert_eq!(lines[5], "Desktops: [ ] = in view, F = a full-screen app.");
+}
+
 #[test]
 fn displays_shows_each_display_and_the_matching_profile() {
     let (_dir, store) = temp_store();

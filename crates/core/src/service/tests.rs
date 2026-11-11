@@ -171,6 +171,153 @@ fn lists_displays_and_managed_windows() {
     assert_eq!(titles, ["Apple", "zsh", "Inbox"]);
 }
 
+/// The desk with desktops: DELL shows desktop 2 of two; Built-in shows a full-screen app.
+/// Safari is in view, Mail is on DELL's hidden desktop 1, Ghostty is full screen on Built-in,
+/// and a Notes window on the hidden desktop has never been handed out by its app.
+fn desk_with_desktops() -> FakeSystem {
+    let mut sys = desk();
+    sys.screens = vec![
+        screen(20, 2, &[(1, false), (2, false)]),
+        screen(10, 5, &[(5, true)]),
+    ];
+    sys.windows[0].window_id = Some(100);
+    sys.windows[0].spaces = vec![2];
+    sys.windows[1].window_id = Some(101);
+    sys.windows[1].spaces = vec![5];
+    sys.windows[1].fullscreen = Some(true);
+    sys.windows[2].window_id = Some(102);
+    sys.windows[2].spaces = vec![1];
+    sys.server = vec![
+        server_window("Safari", 100, &[2], 100.0),
+        server_window("Ghostty", 101, &[5], 2000.0),
+        server_window("Mail", 102, &[1], 500.0),
+        server_window("Notes", 103, &[1], 700.0),
+    ];
+    sys
+}
+
+#[test]
+fn inventory_covers_every_desktop() {
+    let (_dir, store) = temp_store();
+    let sys = desk_with_desktops();
+    let all = inventory(&with(&sys, &store, &CLOCK)).unwrap();
+    let seen: Vec<(String, String, bool)> = all
+        .windows
+        .iter()
+        .map(|w| {
+            (
+                w.app.clone(),
+                w.place.as_ref().unwrap().label(),
+                w.fullscreen,
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("Safari".to_string(), "DELL · desktop 2".to_string(), false),
+            (
+                "Ghostty".to_string(),
+                "Built-in · full screen".to_string(),
+                true
+            ),
+            (
+                "Mail".to_string(),
+                "DELL · desktop 1 (hidden)".to_string(),
+                false
+            ),
+        ]
+    );
+    assert_eq!(all.unreached.len(), 1);
+    assert_eq!(all.unreached[0].app, "Notes");
+    assert_eq!(all.unreached[0].window_id, 103);
+    assert!(all.desktops.is_known());
+    assert_eq!(desktop_map(&with(&sys, &store, &CLOCK)), all.desktops);
+}
+
+#[test]
+fn apps_with_missing_windows_are_asked_again_by_number() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk_with_desktops();
+    // Notes (pid 1 in these fakes) hands out its hidden window when addressed by number.
+    let mut notes = window("Notes", "Shopping", 700.0);
+    notes.window_id = Some(103);
+    notes.spaces = vec![1];
+    sys.numbered = vec![(1, notes), (55, window("Other", "not asked for", 0.0))];
+    let all = inventory(&with(&sys, &store, &CLOCK)).unwrap();
+    // Asked for exactly the missing window: Notes' window 103.
+    assert_eq!(*sys.scans.borrow(), [vec![(1, 103)]]);
+    assert!(all.unreached.is_empty());
+    let last = all.windows.last().unwrap();
+    assert_eq!(
+        (last.app.as_str(), last.title.as_str(), last.handle),
+        ("Notes", "Shopping", 3)
+    );
+    assert_eq!(
+        last.place.as_ref().unwrap().label(),
+        "DELL · desktop 1 (hidden)"
+    );
+    assert_eq!(all.windows.len(), 4);
+}
+
+#[test]
+fn no_app_is_scanned_when_every_window_is_already_known() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk_with_desktops();
+    sys.server.pop();
+    let all = inventory(&with(&sys, &store, &CLOCK)).unwrap();
+    assert!(sys.scans.borrow().is_empty());
+    assert!(all.unreached.is_empty());
+    assert_eq!(all.windows.len(), 3);
+}
+
+#[test]
+fn every_missing_window_is_asked_for_in_one_request() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk_with_desktops();
+    sys.server.push(server_window("Notes", 104, &[1], 800.0));
+    let mut other = server_window("Preview", 200, &[1], 900.0);
+    other.pid = 2;
+    sys.server.push(other);
+    let all = inventory(&with(&sys, &store, &CLOCK)).unwrap();
+    assert_eq!(*sys.scans.borrow(), [vec![(1, 103), (1, 104), (2, 200)]]);
+    assert_eq!(all.unreached.len(), 3);
+}
+
+#[test]
+fn inventory_without_desktop_information_still_lists_windows() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk();
+    sys.server = vec![server_window("Notes", 103, &[1], 700.0)];
+    let all = inventory(&with(&sys, &store, &CLOCK)).unwrap();
+    assert_eq!(all.windows.len(), 3);
+    assert!(all.windows.iter().all(|w| w.place.is_none()));
+    assert!(all.unreached.is_empty());
+    assert!(!all.desktops.is_known());
+}
+
+#[test]
+fn inventory_needs_permission() {
+    let (_dir, store) = temp_store();
+    let sys = desk_with_desktops().untrusted();
+    assert_eq!(
+        inventory(&with(&sys, &store, &CLOCK)),
+        Err(Error::NotTrusted)
+    );
+}
+
+#[test]
+fn the_plain_window_list_leaves_out_hidden_and_full_screen_windows() {
+    let (_dir, store) = temp_store();
+    let sys = desk_with_desktops();
+    let apps: Vec<String> = windows(&with(&sys, &store, &CLOCK))
+        .unwrap()
+        .into_iter()
+        .map(|w| w.app)
+        .collect();
+    assert_eq!(apps, ["Safari"]);
+}
+
 #[test]
 fn listing_windows_needs_permission_but_displays_do_not() {
     let (_dir, store) = temp_store();
@@ -247,4 +394,7 @@ fn types_are_cloneable_and_printable() {
     let restored = restore(&backend, "home").unwrap();
     assert_eq!(restored.clone(), restored);
     assert!(format!("{restored:?}").starts_with("Restored"));
+    let all = inventory(&backend).unwrap();
+    assert_eq!(all.clone(), all);
+    assert!(format!("{all:?}").starts_with("Inventory"));
 }

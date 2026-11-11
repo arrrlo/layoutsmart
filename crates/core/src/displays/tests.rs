@@ -7,6 +7,7 @@ fn raw(name: Option<&str>, vendor: u32, model: u32, serial: u32) -> RawDisplay {
         vendor,
         model,
         serial,
+        uuid: None,
         bounds: Rect::new(-5.0, 7.0, 10.0, 20.0),
     }
 }

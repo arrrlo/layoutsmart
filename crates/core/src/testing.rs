@@ -1,10 +1,11 @@
 //! Test doubles shared by the core's unit tests.
 
+use crate::desktops::{RawScreen, RawSpace};
 use crate::displays::RawDisplay;
 use crate::geometry::Rect;
 use crate::ports::{Clock, Host, LoginItem, Question, TextPrompt, Ui, WindowSystem};
 use crate::store::ProfileStore;
-use crate::windows::{RawWindow, STANDARD_WINDOW};
+use crate::windows::{RawWindow, STANDARD_WINDOW, ServerWindow};
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
@@ -14,6 +15,14 @@ pub struct FakeSystem {
     pub prompts: Cell<u32>,
     pub displays: Vec<RawDisplay>,
     pub windows: Vec<RawWindow>,
+    /// Windows an app only gives out when addressed by number, per process id.
+    pub numbered: Vec<(i32, RawWindow)>,
+    /// Each by-number request: the (process id, window number) pairs asked for.
+    pub scans: RefCell<Vec<Vec<(i32, u32)>>>,
+    /// What the window server lists (all desktops).
+    pub server: Vec<ServerWindow>,
+    /// Desktops per screen; empty = macOS tells nothing.
+    pub screens: Vec<RawScreen>,
     /// Handles of windows that refuse to move.
     pub stuck: Vec<usize>,
     pub moves: RefCell<Vec<(usize, Rect)>>,
@@ -26,6 +35,10 @@ impl FakeSystem {
             prompts: Cell::new(0),
             displays,
             windows,
+            numbered: Vec::new(),
+            scans: RefCell::new(Vec::new()),
+            server: Vec::new(),
+            screens: Vec::new(),
             stuck: Vec::new(),
             moves: RefCell::new(Vec::new()),
         }
@@ -53,8 +66,42 @@ impl WindowSystem for FakeSystem {
         self.displays.clone()
     }
 
+    /// Handles are positions in the list, whatever the test wrote in `handle`.
     fn windows(&self) -> Vec<RawWindow> {
-        self.windows.clone()
+        self.windows
+            .iter()
+            .enumerate()
+            .map(|(handle, window)| RawWindow {
+                handle,
+                ..window.clone()
+            })
+            .collect()
+    }
+
+    /// Returns the asked-for windows it has. Handles continue after those of `windows()`.
+    fn numbered_windows(&self, wanted: &[(i32, u32)]) -> Vec<RawWindow> {
+        self.scans.borrow_mut().push(wanted.to_vec());
+        self.numbered
+            .iter()
+            .filter(|(pid, window)| {
+                window
+                    .window_id
+                    .is_some_and(|id| wanted.contains(&(*pid, id)))
+            })
+            .enumerate()
+            .map(|(index, (_, window))| RawWindow {
+                handle: self.windows.len() + index,
+                ..window.clone()
+            })
+            .collect()
+    }
+
+    fn server_windows(&self) -> Vec<ServerWindow> {
+        self.server.clone()
+    }
+
+    fn screens(&self) -> Vec<RawScreen> {
+        self.screens.clone()
     }
 
     fn set_frame(&self, handle: usize, frame: Rect) -> bool {
@@ -83,6 +130,7 @@ pub fn display(name: &str, serial: u32, x: f64) -> RawDisplay {
         vendor: 1,
         model: 2,
         serial,
+        uuid: Some(format!("uuid-{serial}")),
         bounds: Rect::new(x, 0.0, 1920.0, 1080.0),
     }
 }
@@ -97,12 +145,45 @@ pub fn window(app: &str, title: &str, x: f64) -> RawWindow {
         app: Some(app.into()),
         bundle_id: Some(format!("com.test.{}", app.to_lowercase())),
         pid: 1,
+        handle: 0,
+        window_id: None,
         subrole: Some(STANDARD_WINDOW.into()),
         minimized: Some(false),
         fullscreen: Some(false),
         title: Some(title.into()),
         position: Some((x, 50.0)),
         size: Some((800.0, 600.0)),
+        spaces: vec![],
+    }
+}
+
+/// The desktops of the screen made by `display(_, serial, _)`: `(id, is full screen)` in
+/// row order, with `current` in view.
+pub fn screen(serial: u32, current: u64, spaces: &[(u64, bool)]) -> RawScreen {
+    RawScreen {
+        uuid: format!("uuid-{serial}"),
+        current,
+        spaces: spaces
+            .iter()
+            .map(|(id, fullscreen)| RawSpace {
+                id: *id,
+                fullscreen: *fullscreen,
+            })
+            .collect(),
+    }
+}
+
+/// A window the window server lists for app `app`, at `frame(x)`.
+pub fn server_window(app: &str, window_id: u32, spaces: &[u64], x: f64) -> ServerWindow {
+    ServerWindow {
+        app: Some(app.into()),
+        bundle_id: Some(format!("com.test.{}", app.to_lowercase())),
+        pid: 1,
+        window_id,
+        layer: 0,
+        alpha: 1.0,
+        bounds: frame(x),
+        spaces: spaces.to_vec(),
     }
 }
 
