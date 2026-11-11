@@ -22,9 +22,11 @@ everything, then pick "home" or "office" from the menu and carry on.
 
 ## What it does
 
-- **Save Window Positions…** stores the position and size of every open window under a
-  name you choose: "home", "office", "no monitors", anything.
-- **Click a profile** in the menu to move every window back to where that profile has it.
+- **Save Window Positions…** stores the position and size of the windows you can see, on
+  every connected screen, under a name you choose: "home", "office", "no monitors",
+  anything.
+- **Click a profile** in the menu to move those windows back to where that profile has
+  them.
 - **Dashboard** lists your profiles and draws each one: the displays, how they are
   arranged, and the windows on each. Rename or delete profiles there.
 - **`layoutsmart` command** does the same from Terminal, for scripts and shortcuts.
@@ -102,6 +104,12 @@ The terminal app you run it from needs Accessibility permission too.
 - Windows are matched by app, then by title; windows whose title has changed (a browser
   showing a different page) are matched in the order macOS lists them.
 - Minimised and full-screen windows are left alone, and so are apps that are not running.
+- **Only the desktops that are showing.** If you use several desktops (Spaces), macOS
+  tells an app about a window only while its desktop is on screen. Layoutsmart saves and
+  restores the windows on the desktop each screen is currently showing; windows on your
+  other desktops are neither saved nor moved. Save and restore with the same desktops in
+  view — restoring while a different desktop is showing can move that desktop's windows
+  of the same app into the saved positions.
 - Layoutsmart never connects to the internet and collects nothing.
 
 ## Fast and light
