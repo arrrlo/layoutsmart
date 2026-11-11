@@ -146,6 +146,29 @@ jobs:
           layoutsmart rename ci renamed
           layoutsmart delete renamed
           layoutsmart profiles | grep -q "No saved profiles"
+      # Full screen for real. TextEdit is saved as an ordinary window; a copy of that
+      # profile says it is full screen. Restoring one and then the other must put the
+      # window into full screen and take it out again.
+      - name: Puts a window into full screen and takes it out again
+        run: |
+          set -eux
+          export LAYOUTSMART_DIR="$RUNNER_TEMP/fullscreen"
+          echo "Layoutsmart" > "$RUNNER_TEMP/note.txt"
+          open -a TextEdit "$RUNNER_TEMP/note.txt"
+          for attempt in $(seq 1 30); do layoutsmart list | grep -q TextEdit && break; sleep 1; done
+          layoutsmart plain save
+          jq '(.windows[] | select(.app == "TextEdit")) |= (del(.desktop) | .fullscreen = true)' \
+            "$LAYOUTSMART_DIR/plain.json" > "$LAYOUTSMART_DIR/full.json"
+          time layoutsmart full restore
+          layoutsmart list
+          layoutsmart displays
+          layoutsmart list | grep TextEdit | grep -q "full screen"
+          time layoutsmart plain restore
+          layoutsmart list
+          layoutsmart displays
+          layoutsmart list | grep TextEdit | grep -q "desktop 1"
+          layoutsmart plain restore
+          osascript -e 'quit app "TextEdit"' || true
       - name: The Intel build runs too (Rosetta)
         if: runner.arch == 'ARM64'
         run: |

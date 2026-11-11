@@ -18,22 +18,26 @@ Layoutsmart is a small macOS menu bar app that remembers where your windows are 
 them back with one click. Plug in a different set of displays, watch macOS scatter
 everything, then pick "home" or "office" from the menu and carry on.
 
-![The Layoutsmart dashboard showing a profile with three displays and the windows on each](docs/dashboard.png)
+![The Layoutsmart dashboard showing a profile with three displays, a row of desktop tabs for each, and the windows on the selected desktops](docs/dashboard.png)
 
 ## What it does
 
-- **Save Window Positions…** stores the position and size of the windows you can see, on
-  every connected screen, under a name you choose: "home", "office", "no monitors",
-  anything.
-- **Click a profile** in the menu to move those windows back to where that profile has
-  them.
+- **Save Window Positions…** stores where every window is — its position and size, the
+  screen and desktop (Space) it is on, and whether it is full screen — under a name you
+  choose: "home", "office", "no monitors", anything.
+- **Click a profile** in the menu to put the windows back: on their screen and desktop,
+  at their size, in or out of full screen.
 - **Dashboard** lists your profiles and draws each one: the displays, how they are
-  arranged, and the windows on each. Rename or delete profiles there.
+  arranged, and the windows on each desktop. Rename or delete profiles there.
 - **`layoutsmart` command** does the same from Terminal, for scripts and shortcuts.
 - Starts when you log in and sits in the menu bar. No Dock icon, no window unless you
   ask for one.
 
 It is deliberately manual: nothing moves until you click.
+
+> **Desktops and full screen are new on `main`** and will be version 0.2. The released
+> 0.1.0 saves and restores only the windows on the desktops that are in view, and leaves
+> full-screen windows alone.
 
 ## Install
 
@@ -76,7 +80,7 @@ Click the icon in the menu bar:
 |---|---|
 | **Save Window Positions…** | Asks for a name and saves the current layout. Using an existing name asks before replacing it. |
 | *your profiles* | Click one to restore it. |
-| **Open Dashboard…** | Shows every profile with a picture of its displays and windows. Rename and Delete are here. |
+| **Open Dashboard…** | Shows every profile with a picture of its displays and windows, with a tab for each desktop and full-screen app of each screen. Rename and Delete are here. |
 | **Quit Layoutsmart** | Stops the app until you open it again or log in. |
 
 ### Command line
@@ -88,8 +92,8 @@ layoutsmart restore              Restore the profile saved with the displays con
 layoutsmart profiles             List saved profiles (* = saved with the current displays)
 layoutsmart rename <old> <new>   Rename a profile
 layoutsmart delete <name>        Delete a profile
-layoutsmart list                 Show open windows and their positions
-layoutsmart displays             Show connected displays
+layoutsmart list                 Show open windows: position, size, screen and desktop
+layoutsmart displays             Show connected displays and each one's desktops
 layoutsmart help | --version
 ```
 
@@ -101,16 +105,50 @@ The terminal app you run it from needs Accessibility permission too.
   another folder). The file name is the profile name.
 - Each profile remembers which displays it was saved with, so `layoutsmart restore`
   without a name can pick the right one.
-- Windows are matched by app, then by title; windows whose title has changed (a browser
-  showing a different page) are matched in the order macOS lists them.
-- Minimised and full-screen windows are left alone, and so are apps that are not running.
-- **Only the desktops that are showing.** If you use several desktops (Spaces), macOS
-  tells an app about a window only while its desktop is on screen. Layoutsmart saves and
-  restores the windows on the desktop each screen is currently showing; windows on your
-  other desktops are neither saved nor moved. Save and restore with the same desktops in
-  view — restoring while a different desktop is showing can move that desktop's windows
-  of the same app into the saved positions.
+- Windows are matched by app, then by title, preferring a window that is still on the
+  desktop it was saved on. Windows whose title has changed (a browser showing a different
+  page) are matched in the order they were opened, first among the windows on the same
+  desktop.
+- Minimised windows are left alone, and so are apps that are not running.
+- If everything is where the profile has it, restoring does nothing at all.
 - Layoutsmart never connects to the internet and collects nothing.
+
+### Desktops and full screen
+
+macOS gives an app no direct way to move another app's window to a different desktop, or
+to make a screen show a different desktop. So Layoutsmart does what you would do by hand,
+only faster:
+
+- **To put a window on a desktop**, it brings that desktop into view on its screen and
+  moves the window so that it lands there (off to another screen and straight back; with
+  a single screen, into full screen and out again).
+- **To bring a desktop into view**, it presses the Mission Control shortcuts "Move left a
+  space" and "Move right a space" (Control–← and Control–→) with the pointer on that
+  screen, then puts the pointer back. If you have switched those shortcuts off or changed
+  them, it presses nothing, leaves windows on the desktop they are on, and tells you.
+- **Full screen** is switched on or off for each window that needs it. A new full-screen
+  desktop always appears at the end of its screen's row, so Layoutsmart makes them in the
+  order they were saved in.
+
+What that means in practice:
+
+- You will see screens slide between desktops while a restore runs, and each window that
+  enters or leaves full screen takes macOS about a second. The menu does not respond
+  until it is done. Windows that only need to move or resize are instant, on any desktop.
+- When it has finished, each screen shows what it showed when the profile was saved, and
+  the app you were using is in front again.
+- macOS only lets other apps reach a window once its desktop has been in view since the
+  window's app started. A window that has not been is saved without its title, and on
+  restore its desktop is visited once — only if the window has to move.
+- Layoutsmart cannot add desktops. If a screen has fewer than when the profile was saved,
+  the windows of the missing ones go to its last desktop.
+- Full-screen desktops that already exist are not put in a different order, and two
+  windows sharing one full-screen desktop (Split View) come back as two.
+- With a single screen, a window of an app that has no full-screen mode cannot change
+  desktop; it is moved and resized where it is, and reported.
+- Seeing other desktops relies on parts of macOS that Apple does not document. They are
+  checked on every macOS version the installer is tested on; where they are missing,
+  Layoutsmart handles the windows on the desktops in view, as version 0.1 did.
 
 ## Fast and light
 
@@ -118,13 +156,16 @@ Measured on an Apple Silicon MacBook Pro with three displays:
 
 | | |
 |---|---|
-| Reading every open window | about 40 ms |
+| Reading every window on every desktop (18 windows, 11 desktops) | about 90 ms |
 | Memory while idle | about 20 MB (about 32 MB once the dashboard has been opened) |
 | CPU while idle | 0% — no timers, no polling |
 | Size on disk | 2.4 MB for the app, 1.3 MB for the installer |
 
 Asking another app about its windows takes macOS 10–25 ms per app, so Layoutsmart asks
-all apps at the same time, and reads all of a window's properties in one request.
+all apps at the same time, and reads all of a window's properties in one request. A
+restore that only moves and resizes windows takes about a tenth of a second in all, most
+of it that reading; switching desktops and full screen takes as long as macOS's
+animations do.
 
 ## Building from source
 
@@ -141,8 +182,8 @@ The layout of the code:
 
 | Folder | What it holds |
 |---|---|
-| `crates/core` | Every decision: matching windows, profiles on disk, the dialogs' logic, the menu, the dashboard picture, the command line. Pure Rust, no `unsafe`. |
-| `crates/macos` | The calls into macOS: Accessibility, displays, running apps. |
+| `crates/core` | Every decision: matching windows, the steps of a restore, profiles on disk, the dialogs' logic, the menu, the dashboard picture, the command line. Pure Rust, no `unsafe`. |
+| `crates/macos` | The calls into macOS: Accessibility, displays, desktops, running apps, the pointer and keyboard. |
 | `crates/app` | The two programs and the AppKit windows. |
 | `xtask` | Build tasks: quality gates, app bundle, installer. |
 
