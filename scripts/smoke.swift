@@ -44,10 +44,16 @@ func all(_ root: AXUIElement, role wanted: String, depth: Int = 8) -> [AXUIEleme
     return hits
 }
 
+/// What the last click reported (0 = delivered and answered), for failure reports.
+var lastPress: Int32 = 0
+
 func press(_ element: AXUIElement) {
-    // The action may open a dialog and not return until it closes; don't wait for it.
-    AXUIElementSetMessagingTimeout(element, 0.5)
-    AXUIElementPerformAction(element, "AXPress" as CFString)
+    // The action may open a dialog and not answer until that closes, so the wait for an
+    // answer is cut short. It cannot be much shorter: while a click is unanswered macOS
+    // holds back every other request to the app, and on a slow machine a click that is
+    // given up on too early may never be delivered at all.
+    AXUIElementSetMessagingTimeout(element, 3)
+    lastPress = AXUIElementPerformAction(element, "AXPress" as CFString).rawValue
 }
 
 /// Printed when something never shows up, so a failure on a remote machine can be understood.
@@ -110,7 +116,7 @@ describeScreen = {
         return "  window role=\(role(window)) subrole=\((attribute(window, "AXSubrole") as? String) ?? "") title='\(title(window))' buttons=\(buttons)"
     }
     let menu = all(statusItem(), role: "AXMenuItem").map(title)
-    return "app running: \(process.isRunning)\nwindows (\(windows.count)):\n\(lines.joined(separator: "\n"))\nmenu items showing: \(menu)"
+    return "last click reported: \(lastPress)\napp running: \(process.isRunning)\nwindows (\(windows.count)):\n\(lines.joined(separator: "\n"))\nmenu items showing: \(menu)"
 }
 
 func dialog() -> AXUIElement {
