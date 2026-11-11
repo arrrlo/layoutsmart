@@ -35,10 +35,6 @@ everything, then pick "home" or "office" from the menu and carry on.
 
 It is deliberately manual: nothing moves until you click.
 
-> **Desktops and full screen are new on `main`** and will be version 0.2. The released
-> 0.1.0 saves and restores only the windows on the desktops that are in view, and leaves
-> full-screen windows alone.
-
 ## Install
 
 1. Download `Layoutsmart-<version>.pkg` from the
@@ -160,7 +156,7 @@ Measured on an Apple Silicon MacBook Pro with three displays:
 | Reading every window on every desktop (18 windows, 11 desktops) | about 90 ms |
 | Memory while idle | about 20 MB (about 32 MB once the dashboard has been opened) |
 | CPU while idle | 0% — no timers, no polling |
-| Size on disk | 2.4 MB for the app, 1.3 MB for the installer |
+| Size on disk | 2.8 MB for the app, 1.6 MB for the installer |
 
 Asking another app about its windows takes macOS 10–25 ms per app, so Layoutsmart asks
 all apps at the same time, and reads all of a window's properties in one request. A
