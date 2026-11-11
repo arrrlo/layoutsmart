@@ -8,8 +8,8 @@ use objc2::runtime::AnyObject;
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSApplicationDelegate, NSControlTextEditingDelegate, NSMenu, NSMenuDelegate, NSMenuItem,
-    NSTableColumn, NSTableView, NSTableViewDataSource, NSTableViewDelegate, NSView,
-    NSWindowDelegate,
+    NSSegmentedControl, NSTableColumn, NSTableView, NSTableViewDataSource, NSTableViewDelegate,
+    NSView, NSWindowDelegate,
 };
 use objc2_foundation::{NSInteger, NSNotification, NSObject, NSObjectProtocol, NSRect};
 
@@ -35,6 +35,11 @@ define_class!(
         fn delete_clicked(&self, _sender: Option<&AnyObject>) {
             dashboard::delete(app())
         }
+
+        #[unsafe(method(tabChosen:))]
+        fn tab_chosen(&self, sender: &NSSegmentedControl) {
+            dashboard::tab_chosen(app(), sender)
+        }
     }
 
     unsafe impl NSObjectProtocol for Controller {}
@@ -57,6 +62,11 @@ define_class!(
         #[unsafe(method(windowWillClose:))]
         fn window_will_close(&self, _notification: &NSNotification) {
             dashboard::closed(app())
+        }
+
+        #[unsafe(method(windowDidEndLiveResize:))]
+        fn window_resized(&self, _notification: &NSNotification) {
+            dashboard::resized(app())
         }
     }
 

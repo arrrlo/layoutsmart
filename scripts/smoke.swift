@@ -230,6 +230,14 @@ let rows = wait("the profile list") { () -> [AXUIElement]? in
 check(rows.count == 1, "the list shows one profile")
 let summary = all(dashboard, role: "AXStaticText").compactMap { attribute($0, "AXValue") as? String }
 check(summary.contains { $0.contains("display") && $0.contains("window") && $0.contains("saved") }, "the summary line describes the profile")
+// Each screen has a row of tabs: its desktops, then its full-screen apps.
+let tabs = wait("the desktop tabs") { () -> [AXUIElement]? in
+    let found = all(dashboard, role: "AXRadioButton")
+    return found.isEmpty ? nil : found
+}
+let firstDesktop: AXUIElement = wait("a tab for the first desktop") { tabs.first { title($0) == "Desktop 1" } }
+press(firstDesktop)
+check(poll(seconds: 5) { (attribute(firstDesktop, "AXValue") as? Int) == 1 }, "clicking a desktop's tab selects it")
 
 print("7. Rename")
 press(wait("Rename…") { find(dashboard, role: "AXButton", title: "Rename…") })

@@ -27,16 +27,20 @@
       "x": 30,
       "y": 50,
       "width": 1240,
-      "height": 1350
+      "height": 1350,
+      "display": "7789-23313-16843009",
+      "desktop": 1
     },
     {
       "app": "Xcode",
       "bundleId": "com.apple.dt.Xcode",
-      "title": "Layoutsmart \u2014 store.rs",
+      "title": "Layoutsmart — store.rs",
       "x": 1290,
       "y": 50,
       "width": 1240,
-      "height": 900
+      "height": 900,
+      "display": "7789-23313-16843009",
+      "desktop": 1
     },
     {
       "app": "Terminal",
@@ -45,7 +49,9 @@
       "x": 1290,
       "y": 970,
       "width": 1240,
-      "height": 430
+      "height": 430,
+      "display": "7789-23313-16843009",
+      "desktop": 1
     },
     {
       "app": "Mail",
@@ -54,7 +60,9 @@
       "x": 554,
       "y": 1480,
       "width": 880,
-      "height": 900
+      "height": 900,
+      "display": "1552-41049-0",
+      "desktop": 1
     },
     {
       "app": "Calendar",
@@ -63,7 +71,47 @@
       "x": 1454,
       "y": 1480,
       "width": 552,
-      "height": 900
+      "height": 900,
+      "display": "1552-41049-0",
+      "desktop": 1
+    },
+    {
+      "app": "Numbers",
+      "bundleId": "com.apple.iWork.Numbers",
+      "title": "Budget",
+      "x": 60,
+      "y": 70,
+      "width": 1500,
+      "height": 1200,
+      "display": "7789-23313-16843009",
+      "desktop": 2
+    },
+    {
+      "app": "Music",
+      "bundleId": "com.apple.Music",
+      "title": "Focus playlist",
+      "x": 524,
+      "y": 1440,
+      "width": 1512,
+      "height": 982,
+      "display": "1552-41049-0",
+      "fullscreen": true
+    }
+  ],
+  "desktops": [
+    {
+      "display": "7789-23313-16843009",
+      "desktops": 2,
+      "showing": {
+        "desktop": 1
+      }
+    },
+    {
+      "display": "1552-41049-0",
+      "desktops": 1,
+      "showing": {
+        "desktop": 1
+      }
     }
   ]
 }

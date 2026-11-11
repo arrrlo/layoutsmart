@@ -2,7 +2,7 @@
 
 use crate::flows::{self, Session};
 use crate::geometry::{Rect, Size};
-use crate::model::{DisplayInfo, Layout};
+use crate::model::{DisplayInfo, Layout, SavedScreen, Showing, WindowInfo};
 use crate::store::ProfileStore;
 use crate::text::plural;
 use crate::timefmt;
@@ -102,8 +102,105 @@ fn color_of(apps: &[&str], bundle_id: &str) -> usize {
     apps.iter().position(|app| *app == bundle_id).unwrap_or(0) % PALETTE_SIZE
 }
 
-/// The screens of `layout`, then its windows from back to front, scaled to `canvas`.
-pub fn shapes(layout: &Layout, canvas: Size) -> Vec<Shape> {
+/// One screen's row of tabs: its ordinary desktops, then its full-screen windows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TabRow {
+    /// The screen (`DisplayInfo::id`).
+    pub display: String,
+    pub name: String,
+    pub tabs: Vec<String>,
+    /// How many of the tabs, from the left, are ordinary desktops.
+    pub desktops: usize,
+    pub selected: usize,
+}
+
+/// The full-screen windows saved on a screen, in the order of their desktops.
+fn fullscreen_on<'a>(layout: &'a Layout, display: &str) -> Vec<&'a WindowInfo> {
+    layout
+        .windows
+        .iter()
+        .filter(|window| window.fullscreen && window.display.as_deref() == Some(display))
+        .collect()
+}
+
+/// The tab a screen opens on: what it showed when the profile was saved.
+fn opening_tab(saved: &SavedScreen, full: &[&WindowInfo]) -> usize {
+    match &saved.showing {
+        Showing::Desktop(number) => (*number).min(saved.desktops).saturating_sub(1) as usize,
+        Showing::FullScreen { bundle_id, title } => full
+            .iter()
+            .position(|window| window.bundle_id == *bundle_id && window.title == *title)
+            .or_else(|| {
+                full.iter()
+                    .position(|window| window.bundle_id == *bundle_id)
+            })
+            .map_or(0, |index| saved.desktops as usize + index),
+        Showing::Unknown => 0,
+    }
+}
+
+fn tab_row(layout: &Layout, display: &DisplayInfo, chosen: &[(String, usize)]) -> Option<TabRow> {
+    let saved = layout.screen(&display.id)?;
+    let full = fullscreen_on(layout, &display.id);
+    let tabs: Vec<String> = (1..=saved.desktops)
+        .map(|number| format!("Desktop {number}"))
+        .chain(full.iter().map(|window| window.app.clone()))
+        .collect();
+    let picked = chosen
+        .iter()
+        .find(|(id, _)| *id == display.id)
+        .map(|(_, tab)| *tab);
+    let selected = picked
+        .unwrap_or_else(|| opening_tab(saved, &full))
+        .min(tabs.len().saturating_sub(1));
+    Some(TabRow {
+        display: display.id.clone(),
+        name: display.name.clone(),
+        tabs,
+        desktops: saved.desktops as usize,
+        selected,
+    })
+}
+
+/// A row of tabs for each screen whose desktops the profile recorded. `chosen` holds the
+/// tabs the user picked, by screen; the others open on what the screen showed.
+pub fn tab_rows(layout: &Layout, chosen: &[(String, usize)]) -> Vec<TabRow> {
+    layout
+        .displays
+        .iter()
+        .filter_map(|display| tab_row(layout, display, chosen))
+        .filter(|row| !row.tabs.is_empty())
+        .collect()
+}
+
+/// Whether a window is on the desktop (or is the full-screen window) its screen's row
+/// has selected. A window on all desktops is on every ordinary one.
+fn on_tab(window: &WindowInfo, layout: &Layout, row: &TabRow) -> bool {
+    if window.fullscreen {
+        fullscreen_on(layout, &row.display)
+            .get(row.selected.wrapping_sub(row.desktops))
+            .is_some_and(|shown| std::ptr::eq(*shown, window))
+    } else {
+        row.selected < row.desktops
+            && window
+                .desktop
+                .is_none_or(|number| number as usize == row.selected + 1)
+    }
+}
+
+/// Windows whose screen has no row of tabs (nothing is known about its desktops) are
+/// always drawn.
+fn is_shown(window: &WindowInfo, layout: &Layout, rows: &[TabRow]) -> bool {
+    window
+        .display
+        .as_deref()
+        .and_then(|display| rows.iter().find(|row| row.display == display))
+        .is_none_or(|row| on_tab(window, layout, row))
+}
+
+/// The screens of `layout`, then the windows on the desktops selected in `rows`, from
+/// back to front, scaled to `canvas`.
+pub fn shapes(layout: &Layout, canvas: Size, rows: &[TabRow]) -> Vec<Shape> {
     let screens: Vec<Rect> = layout.displays.iter().map(DisplayInfo::frame).collect();
     let fit = Rect::union_all(screens.iter().copied()).and_then(|bounds| Fit::new(bounds, canvas));
     let Some(fit) = fit else {
@@ -117,15 +214,20 @@ pub fn shapes(layout: &Layout, canvas: Size) -> Vec<Shape> {
         detail: format!("{:.0} × {:.0}", display.width, display.height),
         color: 0,
     });
-    let windows = layout.windows.iter().rev().filter_map(|window| {
-        Some(Shape {
-            kind: ShapeKind::Window,
-            rect: fit.apply(visible_part(window.frame(), &screens)?),
-            label: window.app.clone(),
-            detail: window.title.clone(),
-            color: color_of(&apps, &window.bundle_id),
-        })
-    });
+    let windows = layout
+        .windows
+        .iter()
+        .rev()
+        .filter(|window| is_shown(window, layout, rows))
+        .filter_map(|window| {
+            Some(Shape {
+                kind: ShapeKind::Window,
+                rect: fit.apply(visible_part(window.frame(), &screens)?),
+                label: window.app.clone(),
+                detail: window.title.clone(),
+                color: color_of(&apps, &window.bundle_id),
+            })
+        });
     displays.chain(windows).collect()
 }
 
@@ -134,6 +236,8 @@ pub fn shapes(layout: &Layout, canvas: Size) -> Vec<Shape> {
 pub struct Dashboard {
     names: Vec<String>,
     selected: Option<usize>,
+    /// The tabs the user picked for the selected profile: (screen, tab).
+    chosen: Vec<(String, usize)>,
 }
 
 impl Dashboard {
@@ -142,6 +246,7 @@ impl Dashboard {
         Dashboard {
             selected: (!names.is_empty()).then_some(0),
             names,
+            chosen: Vec::new(),
         }
     }
 
@@ -168,8 +273,13 @@ impl Dashboard {
         self.selected.is_some()
     }
 
+    /// Selecting another profile forgets the tabs picked for this one.
     pub fn select(&mut self, row: Option<usize>) {
-        self.selected = row.filter(|row| *row < self.names.len());
+        let row = row.filter(|row| *row < self.names.len());
+        if row != self.selected {
+            self.chosen.clear();
+        }
+        self.selected = row;
     }
 
     /// Re-reads the list. Selects `prefer` if it exists; otherwise stays on the same
@@ -185,6 +295,33 @@ impl Dashboard {
             .or_else(|| current.as_deref().and_then(find))
             .or(row)
             .and_then(|row| last.map(|last| row.min(last)));
+        if self.selected_name() != current.as_deref() {
+            self.chosen.clear();
+        }
+    }
+
+    fn layout(&self, store: &ProfileStore) -> Option<Layout> {
+        self.selected_name().and_then(|name| store.load(name).ok())
+    }
+
+    /// The rows of desktop tabs for the selected profile.
+    pub fn tab_rows(&self, store: &ProfileStore) -> Vec<TabRow> {
+        self.layout(store)
+            .map(|layout| tab_rows(&layout, &self.chosen))
+            .unwrap_or_default()
+    }
+
+    /// A click on tab `tab` of row `row`.
+    pub fn choose(&mut self, store: &ProfileStore, row: usize, tab: usize) {
+        let display = self
+            .tab_rows(store)
+            .get(row)
+            .filter(|row| tab < row.tabs.len())
+            .map(|row| row.display.clone());
+        if let Some(display) = display {
+            self.chosen.retain(|(id, _)| *id != display);
+            self.chosen.push((display, tab));
+        }
     }
 
     /// One line about the selected profile, e.g. `2 displays · 14 windows · saved …`.
@@ -207,7 +344,7 @@ impl Dashboard {
             None => Scene::saying(NOTHING_SELECTED),
             Some(Err(error)) => Scene::saying(&error.to_string()),
             Some(Ok(layout)) => Scene {
-                shapes: shapes(&layout, canvas),
+                shapes: shapes(&layout, canvas, &tab_rows(&layout, &self.chosen)),
                 message: String::new(),
             },
         }

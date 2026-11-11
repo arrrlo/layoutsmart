@@ -3,7 +3,7 @@
 
 use super::controller::PreviewView;
 use super::state::App;
-use layoutsmart_core::dashboard::Dashboard;
+use layoutsmart_core::dashboard::{Dashboard, TabRow};
 use layoutsmart_core::ports::Host;
 use objc2::AnyThread;
 use objc2::rc::Retained;
@@ -11,12 +11,13 @@ use objc2::runtime::{AnyObject, ProtocolObject, Sel};
 use objc2::{MainThreadOnly, sel};
 use objc2_app_kit::{
     NSApplication, NSAutoresizingMaskOptions, NSBackingStoreType, NSBitmapImageFileType,
-    NSBitmapImageRep, NSButton, NSDeviceRGBColorSpace, NSScrollView, NSTableColumn, NSTableView,
-    NSTextField, NSView, NSWindow, NSWindowStyleMask,
+    NSBitmapImageRep, NSButton, NSDeviceRGBColorSpace, NSFont, NSScrollView, NSSegmentDistribution,
+    NSSegmentSwitchTracking, NSSegmentedControl, NSTableColumn, NSTableView, NSTextField, NSView,
+    NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSData, NSDate, NSDictionary, NSIndexSet, NSPoint, NSRect, NSRunLoop, NSSize, NSString,
-    ns_string,
+    NSArray, NSData, NSDate, NSDictionary, NSIndexSet, NSPoint, NSRect, NSRunLoop, NSSize,
+    NSString, ns_string,
 };
 
 const WIDTH: f64 = 900.0;
@@ -24,11 +25,19 @@ const HEIGHT: f64 = 560.0;
 const SIDEBAR: f64 = 220.0;
 /// Height of the strip holding the buttons (left) and the summary line (right).
 const BAR: f64 = 44.0;
+/// Height of one screen's row of desktop tabs, between the picture and that strip.
+const TAB_ROW: f64 = 30.0;
+/// Room for the screen's name in front of its tabs.
+const TAB_NAME: f64 = 150.0;
+/// The widest a single tab gets.
+const TAB_WIDTH: f64 = 110.0;
 
 pub struct DashboardUi {
     window: Retained<NSWindow>,
     table: Retained<NSTableView>,
     preview: Retained<PreviewView>,
+    /// Holds a row of tabs for each screen of the selected profile.
+    tabs: Retained<NSView>,
     summary: Retained<NSTextField>,
     rename: Retained<NSButton>,
     delete: Retained<NSButton>,
@@ -119,9 +128,16 @@ fn build(app: &App) -> DashboardUi {
         NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
     );
 
+    let tabs = NSView::initWithFrame(
+        NSView::alloc(app.mtm),
+        rect(SIDEBAR, BAR, WIDTH - SIDEBAR, 0.0),
+    );
+    tabs.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
+
     let content = window
         .contentView()
         .expect("a new window has a content view");
+    content.addSubview(&tabs);
     content.addSubview(&scroll);
     content.addSubview(&rename);
     content.addSubview(&delete);
@@ -131,6 +147,7 @@ fn build(app: &App) -> DashboardUi {
         window,
         table,
         preview,
+        tabs,
         summary,
         rename,
         delete,
@@ -142,14 +159,95 @@ fn with_ui(app: &App, action: impl Fn(&App, &DashboardUi)) {
     app.dashboard.borrow().iter().for_each(|ui| action(app, ui));
 }
 
-/// Summary line, buttons and picture for the current selection.
+/// One screen's row: its name, then a tab for each desktop and each full-screen app.
+/// Rows are stacked with the first screen on top; `below` is how many rows follow it.
+fn add_tab_row(app: &App, ui: &DashboardUi, index: usize, below: usize, row: &TabRow) {
+    let y = below as f64 * TAB_ROW + 3.0;
+    let name = NSTextField::labelWithString(&NSString::from_str(&row.name), app.mtm);
+    name.setFont(Some(&NSFont::systemFontOfSize(11.0)));
+    name.setFrame(rect(16.0, y + 4.0, TAB_NAME - 8.0, 16.0));
+
+    let labels: Vec<Retained<NSString>> = row
+        .tabs
+        .iter()
+        .map(|label| NSString::from_str(label))
+        .collect();
+    // SAFETY: the controller implements `tabChosen:`, which takes the control.
+    let control = unsafe {
+        NSSegmentedControl::segmentedControlWithLabels_trackingMode_target_action(
+            &NSArray::from_retained_slice(&labels),
+            NSSegmentSwitchTracking::SelectOne,
+            Some(&app.controller),
+            Some(sel!(tabChosen:)),
+            app.mtm,
+        )
+    };
+    let room = ui.tabs.bounds().size.width - TAB_NAME - 32.0;
+    let width = room.min(row.tabs.len() as f64 * TAB_WIDTH);
+    control.setSegmentDistribution(NSSegmentDistribution::FillEqually);
+    control.setFrame(rect(16.0 + TAB_NAME, y, width, 24.0));
+    control.setSelectedSegment(row.selected as isize);
+    control.setTag(index as isize);
+    ui.tabs.addSubview(&name);
+    ui.tabs.addSubview(&control);
+}
+
+/// Gives the rows of tabs the height they need and the picture the rest.
+fn make_room(ui: &DashboardUi, content: &NSView, rows: usize) {
+    let size = content.bounds().size;
+    let height = rows as f64 * TAB_ROW;
+    let width = size.width - SIDEBAR;
+    ui.tabs.setFrame(rect(SIDEBAR, BAR, width, height));
+    ui.preview.setFrame(rect(
+        SIDEBAR,
+        BAR + height,
+        width,
+        size.height - BAR - height,
+    ));
+}
+
+/// Rebuilds the rows of desktop tabs for the selected profile.
+fn show_tabs(app: &App, ui: &DashboardUi) {
+    let rows = app.model.borrow().tab_rows(&app.store);
+    ui.tabs
+        .subviews()
+        .iter()
+        .for_each(|view| view.removeFromSuperview());
+    ui.window
+        .contentView()
+        .iter()
+        .for_each(|content| make_room(ui, content, rows.len()));
+    rows.iter()
+        .enumerate()
+        .for_each(|(index, row)| add_tab_row(app, ui, index, rows.len() - 1 - index, row));
+}
+
+/// Summary line, buttons, tabs and picture for the current selection.
 fn show_details(app: &App, ui: &DashboardUi) {
     let model = app.model.borrow();
     ui.summary
         .setStringValue(&NSString::from_str(&model.summary(&app.store)));
     ui.rename.setEnabled(model.can_edit());
     ui.delete.setEnabled(model.can_edit());
+    show_tabs(app, ui);
     ui.preview.setNeedsDisplay(true);
+}
+
+fn redraw(_app: &App, ui: &DashboardUi) {
+    ui.preview.setNeedsDisplay(true);
+}
+
+/// A click on a tab: the picture shows that desktop of that screen.
+pub fn tab_chosen(app: &App, sender: &NSSegmentedControl) {
+    let row = usize::try_from(sender.tag()).unwrap_or(usize::MAX);
+    let tab = usize::try_from(sender.selectedSegment()).unwrap_or(usize::MAX);
+    app.model.borrow_mut().choose(&app.store, row, tab);
+    with_ui(app, redraw);
+}
+
+/// The window has a new size: the tabs are laid out for it.
+pub fn resized(app: &App) {
+    with_ui(app, show_tabs);
 }
 
 /// Makes the list match the model. (Selecting a row calls `selection_changed`, so the

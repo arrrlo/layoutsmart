@@ -32,7 +32,7 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSApplication", "NSResponder", "NSRunningApplication", "NSWorkspace",
     "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView",
     "NSMenu", "NSMenuItem", "NSAlert", "NSTextField", "NSWindow", "NSPanel",
-    "NSTableView", "NSTableColumn", "NSTableHeaderView", "NSScrollView", "NSClipView",
+    "NSSegmentedControl", "NSTableView", "NSTableColumn", "NSTableHeaderView", "NSScrollView", "NSClipView",
     "NSImage", "NSColor", "NSBezierPath", "NSFont", "NSFontDescriptor",
     "NSGraphics", "NSGraphicsContext", "NSStringDrawing", "NSAttributedString",
     "NSParagraphStyle", "NSText", "NSUserInterfaceItemIdentification",

@@ -19,7 +19,9 @@
       "x": 20,
       "y": 45,
       "width": 900,
-      "height": 900
+      "height": 900,
+      "display": "1552-41049-0",
+      "desktop": 1
     },
     {
       "app": "Notes",
@@ -28,7 +30,9 @@
       "x": 940,
       "y": 45,
       "width": 552,
-      "height": 520
+      "height": 520,
+      "display": "1552-41049-0",
+      "desktop": 1
     },
     {
       "app": "Music",
@@ -37,7 +41,29 @@
       "x": 940,
       "y": 585,
       "width": 552,
-      "height": 360
+      "height": 360,
+      "display": "1552-41049-0",
+      "desktop": 1
+    },
+    {
+      "app": "Mail",
+      "bundleId": "com.apple.mail",
+      "title": "Inbox",
+      "x": 60,
+      "y": 50,
+      "width": 1000,
+      "height": 880,
+      "display": "1552-41049-0",
+      "desktop": 2
+    }
+  ],
+  "desktops": [
+    {
+      "display": "1552-41049-0",
+      "desktops": 2,
+      "showing": {
+        "desktop": 1
+      }
     }
   ]
 }
