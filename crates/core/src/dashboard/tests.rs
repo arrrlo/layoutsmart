@@ -39,6 +39,7 @@ fn layout(displays: Vec<DisplayInfo>, windows: Vec<WindowInfo>) -> Layout {
         saved_at: NOW_ISO.into(),
         displays,
         windows,
+        desktops: Vec::new(),
     }
 }
 

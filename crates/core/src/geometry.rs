@@ -67,6 +67,18 @@ impl Rect {
         )
     }
 
+    /// A rectangle of this size — cut down to fit, if need be — in the middle of `within`.
+    pub fn centred_in(&self, within: &Rect) -> Rect {
+        let width = self.width.min(within.width);
+        let height = self.height.min(within.height);
+        Rect::new(
+            within.x + (within.width - width) / 2.0,
+            within.y + (within.height - height) / 2.0,
+            width,
+            height,
+        )
+    }
+
     pub fn union_all(rects: impl Iterator<Item = Rect>) -> Option<Rect> {
         rects.reduce(|a, b| a.union(&b))
     }

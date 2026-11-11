@@ -25,6 +25,36 @@ pub trait WindowSystem {
     fn screens(&self) -> Vec<RawScreen>;
     /// Moves and resizes the window with this `handle` (from `windows()` or `numbered_windows()`).
     fn set_frame(&self, handle: usize, frame: Rect) -> bool;
+    /// Where that window is now — to check that a move took effect.
+    fn frame(&self, handle: usize) -> Option<Rect>;
+    /// Asks the window to enter or leave full screen. macOS animates the change, so it is
+    /// complete only some time after this returns.
+    fn set_fullscreen(&self, handle: usize, on: bool) -> bool;
+
+    /// The system shortcuts "move left a space" and "move right a space", as configured.
+    fn desktop_shortcuts(&self) -> [Shortcut; 2];
+    /// Sends the "one desktop to the left/right" shortcut. macOS applies it to the screen
+    /// the pointer is on.
+    fn press_desktop_key(&self, right: bool);
+    fn pointer(&self) -> (f64, f64);
+    fn park_pointer(&self, x: f64, y: f64);
+    /// Waits, to let macOS finish an animation.
+    fn pause(&self, milliseconds: u64);
+    /// Process id of the app in front.
+    fn front_app(&self) -> Option<i32>;
+    /// Brings that app to the front.
+    fn activate(&self, pid: i32);
+}
+
+/// One system keyboard shortcut as found in the user's settings. `None` means the
+/// setting is absent, which is how macOS stores "left at its default".
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Shortcut {
+    pub enabled: Option<bool>,
+    /// Virtual key code, if the user chose a different key.
+    pub key: Option<i64>,
+    /// Modifier flags, if the user chose different ones.
+    pub modifiers: Option<i64>,
 }
 
 pub trait Clock {

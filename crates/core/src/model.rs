@@ -20,6 +20,10 @@ impl DisplayInfo {
     }
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowInfo {
@@ -30,6 +34,14 @@ pub struct WindowInfo {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// The screen the window was on (`DisplayInfo::id`), when macOS told.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    /// Its desktop on that screen, counted from 1 among the ordinary desktops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub desktop: Option<u32>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fullscreen: bool,
 }
 
 impl WindowInfo {
@@ -42,12 +54,63 @@ impl WindowInfo {
             y: frame.y,
             width: frame.width,
             height: frame.height,
+            display: None,
+            desktop: None,
+            fullscreen: false,
         }
+    }
+
+    /// The same window, recorded as being on ordinary desktop `number` of `display`.
+    pub fn on_desktop(mut self, display: &str, number: u32) -> Self {
+        self.display = Some(display.into());
+        self.desktop = Some(number);
+        self
+    }
+
+    /// The same window, recorded as on `display` without a desktop of its own (a window
+    /// that shows on all desktops).
+    pub fn on_display(mut self, display: &str) -> Self {
+        self.display = Some(display.into());
+        self
+    }
+
+    /// The same window, recorded as full screen on `display`.
+    pub fn in_full_screen(mut self, display: &str) -> Self {
+        self.display = Some(display.into());
+        self.desktop = None;
+        self.fullscreen = true;
+        self
     }
 
     pub fn frame(&self) -> Rect {
         Rect::new(self.x, self.y, self.width, self.height)
     }
+}
+
+/// What a screen was showing when a profile was saved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Showing {
+    /// An ordinary desktop, by number.
+    Desktop(u32),
+    /// A full-screen app's window.
+    #[serde(rename_all = "camelCase")]
+    FullScreen {
+        bundle_id: String,
+        title: String,
+    },
+    Unknown,
+}
+
+/// One screen's desktops at the time a profile was saved.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedScreen {
+    /// `DisplayInfo::id`.
+    pub display: String,
+    /// How many ordinary desktops the screen had.
+    pub desktops: u32,
+    pub showing: Showing,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -57,6 +120,9 @@ pub struct Layout {
     pub saved_at: String,
     pub displays: Vec<DisplayInfo>,
     pub windows: Vec<WindowInfo>,
+    /// Empty for profiles saved before desktops were recorded (or when macOS did not tell).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub desktops: Vec<SavedScreen>,
 }
 
 impl Layout {
@@ -66,6 +132,17 @@ impl Layout {
 
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("Layout always serializes")
+    }
+
+    pub fn knows_desktops(&self) -> bool {
+        !self.desktops.is_empty()
+    }
+
+    /// What was recorded about the screen with this identity.
+    pub fn screen(&self, display: &str) -> Option<&SavedScreen> {
+        self.desktops
+            .iter()
+            .find(|screen| screen.display == display)
     }
 }
 

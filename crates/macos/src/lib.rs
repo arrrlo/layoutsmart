@@ -5,10 +5,12 @@
 
 mod apps;
 mod ax;
+mod input;
 mod plist;
 mod private;
 mod screens;
 mod server;
+mod shortcuts;
 mod spaces;
 mod system;
 

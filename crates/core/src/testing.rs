@@ -3,7 +3,7 @@
 use crate::desktops::{RawScreen, RawSpace};
 use crate::displays::RawDisplay;
 use crate::geometry::Rect;
-use crate::ports::{Clock, Host, LoginItem, Question, TextPrompt, Ui, WindowSystem};
+use crate::ports::{Clock, Host, LoginItem, Question, Shortcut, TextPrompt, Ui, WindowSystem};
 use crate::store::ProfileStore;
 use crate::windows::{RawWindow, STANDARD_WINDOW, ServerWindow};
 use std::cell::{Cell, RefCell};
@@ -111,6 +111,47 @@ impl WindowSystem for FakeSystem {
         self.moves.borrow_mut().push((handle, frame));
         true
     }
+
+    /// Where the window was last moved to; its original frame if it never was.
+    fn frame(&self, handle: usize) -> Option<Rect> {
+        let moved = self
+            .moves
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(h, _)| *h == handle)
+            .map(|(_, frame)| *frame);
+        let original = self.windows.get(handle).and_then(|window| {
+            let (x, y) = window.position?;
+            let (width, height) = window.size?;
+            Some(Rect::new(x, y, width, height))
+        });
+        moved.or(original)
+    }
+
+    fn set_fullscreen(&self, _handle: usize, _on: bool) -> bool {
+        false
+    }
+
+    fn desktop_shortcuts(&self) -> [Shortcut; 2] {
+        [Shortcut::default(); 2]
+    }
+
+    fn press_desktop_key(&self, _right: bool) {}
+
+    fn pointer(&self) -> (f64, f64) {
+        (0.0, 0.0)
+    }
+
+    fn park_pointer(&self, _x: f64, _y: f64) {}
+
+    fn pause(&self, _milliseconds: u64) {}
+
+    fn front_app(&self) -> Option<i32> {
+        None
+    }
+
+    fn activate(&self, _pid: i32) {}
 }
 
 pub struct FixedClock(pub u64);

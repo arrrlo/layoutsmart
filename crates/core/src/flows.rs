@@ -1,10 +1,10 @@
 //! The app's conversations with the user: what to ask, in which order, and what to do
 //! with the answers. The macOS layer only shows the dialogs.
 
-use crate::matcher::Move;
 use crate::names;
 use crate::ports::{Question, TextPrompt, Ui};
-use crate::service::{self, Backend, Error};
+use crate::restore::Entry;
+use crate::service::{self, Backend, Error, Restored};
 use crate::text::{plural, quoted};
 
 /// Everything a conversation needs.
@@ -98,12 +98,31 @@ pub fn save_flow(session: &Session) -> Option<String> {
     report(session, "Couldn’t save the window positions", saved).map(|saved| saved.profile)
 }
 
-fn stuck_line(window: &Move) -> String {
+fn stuck_line(window: &Entry) -> String {
     if window.title.is_empty() {
         window.app.clone()
     } else {
         format!("{} — {}", window.app, window.title)
     }
+}
+
+/// What to tell the user after a restore that did not do everything: (title, message).
+fn shortfall(name: &str, restored: &Restored) -> Option<(String, String)> {
+    let title = if restored.failed.is_empty() {
+        format!("{} was restored, but not completely", quoted(name))
+    } else {
+        format!(
+            "{} couldn’t be put back",
+            plural(restored.failed.len(), "window")
+        )
+    };
+    let stuck: Vec<String> = restored.failed.iter().map(stuck_line).collect();
+    let parts: Vec<String> = [stuck.join("\n")]
+        .into_iter()
+        .chain(restored.notes.iter().cloned())
+        .filter(|part| !part.is_empty())
+        .collect();
+    (!parts.is_empty()).then(|| (title, parts.join("\n\n")))
 }
 
 /// A click on a profile: puts its windows back. True if the profile was applied.
@@ -115,11 +134,9 @@ pub fn restore_flow(session: &Session, name: &str) -> bool {
     let Some(restored) = report(session, &title, service::restore(&session.backend, name)) else {
         return false;
     };
-    if !restored.failed.is_empty() {
-        let lines: Vec<String> = restored.failed.iter().map(stuck_line).collect();
-        let title = format!("{} didn’t move", plural(lines.len(), "window"));
-        session.ui.alert(&title, &lines.join("\n"));
-    }
+    shortfall(name, &restored)
+        .iter()
+        .for_each(|(title, message)| session.ui.alert(title, message));
     true
 }
 

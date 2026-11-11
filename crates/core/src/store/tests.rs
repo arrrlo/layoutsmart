@@ -27,6 +27,7 @@ fn layout(name: &str, saved_at: &str, display_ids: &[&str]) -> Layout {
             "win",
             Rect::new(1.0, 2.0, 3.0, 4.0),
         )],
+        desktops: Vec::new(),
     }
 }
 

@@ -1,4 +1,7 @@
 use super::*;
+use crate::ports::WindowSystem;
+use crate::restore::NO_STEPPING_NOTE;
+use crate::restore::testing::Sim;
 use crate::service::Backend;
 use crate::store::ProfileStore;
 use crate::testing::*;
@@ -9,7 +12,7 @@ fn strings(args: &[&str]) -> Vec<String> {
 }
 
 /// Runs the CLI and returns (exit code, stdout, stderr).
-fn cli(sys: &FakeSystem, store: &ProfileStore, args: &[&str]) -> (i32, String, String) {
+fn cli(sys: &dyn WindowSystem, store: &ProfileStore, args: &[&str]) -> (i32, String, String) {
     let clock = FixedClock(NOW);
     let backend = Backend {
         sys,
@@ -196,7 +199,22 @@ fn restore_lists_the_windows_it_moved() {
     assert_eq!(
         out,
         "Restored 'home': moved 2 windows.\n  Safari: Apple\n  Ghostty: <untitled>\n\
-         Could not move 1 window:\n  Mail: Inbox\n"
+         Could not put back 1 window:\n  Mail: Inbox\n"
+    );
+}
+
+#[test]
+fn restore_passes_on_what_could_not_be_done() {
+    let (_dir, store) = temp_store();
+    let sim = Sim::new().screen("Main", 10, Rect::new(0.0, 0.0, 2000.0, 1200.0), 2, 1);
+    cli(&sim, &store, &["save", "home"]);
+    sim.user_shows("Main", 2);
+    sim.shortcuts_on.set(false);
+    let (code, out, _) = cli(&sim, &store, &["restore", "home"]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        out,
+        format!("Restored 'home': moved 0 windows.\n{NO_STEPPING_NOTE}\n")
     );
 }
 

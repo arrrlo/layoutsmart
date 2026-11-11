@@ -215,8 +215,8 @@ fn is_window(element: &AXUIElement) -> bool {
 
 /// Looks for the windows with these window-server numbers among the app's numbered
 /// elements, and stops as soon as all are found. This reaches windows on desktops that
-/// are not in view — but only ones the app has listed at some earlier time (see
-/// CLAUDE.md, "Seeing windows").
+/// are not in view — but only ones the app has listed at some earlier time: a window
+/// that has only ever been on a desktop that was not in view answers to no number.
 pub fn numbered_windows(pid: i32, wanted: &[u32]) -> Vec<CFRetained<AXUIElement>> {
     // A window's parts (buttons, text fields) have numbers too and report the same
     // window number, so only the window element itself is taken.
@@ -256,6 +256,37 @@ fn set_size(element: &AXUIElement, frame: Rect) -> bool {
     };
     let pointer = NonNull::from(&mut size).cast::<c_void>();
     set(element, "AXSize", AXValueType::CGSize, pointer)
+}
+
+/// Where the window is now.
+pub fn frame(element: &AXUIElement) -> Option<Rect> {
+    let values: Values = vec![
+        attribute(element, "AXPosition"),
+        attribute(element, "AXSize"),
+    ];
+    point(&values, 0)
+        .zip(size(&values, 1))
+        .map(|((x, y), (width, height))| Rect::new(x, y, width, height))
+}
+
+fn set_flag(element: &AXUIElement, name: &str, on: bool) -> bool {
+    // SAFETY: a plain attribute write; the app may refuse, which is reported as false.
+    let error =
+        unsafe { element.set_attribute_value(&CFString::from_str(name), CFBoolean::new(on)) };
+    error == AXError::Success
+}
+
+/// Asks the window to enter or leave full screen. The app starts at once; macOS takes
+/// about a second to finish.
+pub fn set_fullscreen(element: &AXUIElement, on: bool) -> bool {
+    set_flag(element, "AXFullScreen", on)
+}
+
+/// Makes an app the one in front.
+pub fn bring_to_front(pid: i32) {
+    // SAFETY: creating an element for a pid is always valid; a dead pid just answers nothing.
+    let app = unsafe { AXUIElement::new_application(pid) };
+    set_flag(&app, "AXFrontmost", true);
 }
 
 /// Moves first, so the size isn't limited by the display the window is leaving; then

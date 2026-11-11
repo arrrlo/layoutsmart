@@ -33,7 +33,11 @@ fn sample() -> Layout {
             y: 40.0,
             width: 1200.0,
             height: 800.0,
+            display: None,
+            desktop: None,
+            fullscreen: false,
         }],
+        desktops: Vec::new(),
     }
 }
 
@@ -77,4 +81,91 @@ fn debug_and_clone() {
     let l = sample();
     assert_eq!(l.clone(), l);
     assert!(format!("{l:?}").starts_with("Layout { profile: \"home\""));
+}
+
+#[test]
+fn a_plain_window_is_written_exactly_as_before() {
+    // Profiles written by 0.2 for ordinary setups stay readable by 0.1.
+    let json = sample().to_json();
+    for new_key in ["display\"", "desktop", "fullscreen", "desktops", "showing"] {
+        assert!(!json.contains(new_key), "{new_key} in {json}");
+    }
+}
+
+#[test]
+fn a_window_remembers_its_screen_desktop_and_full_screen_state() {
+    let frame = Rect::new(1.0, 2.0, 3.0, 4.0);
+    let placed = WindowInfo::new("A", "a.b", "t", frame).on_desktop("1-2-3", 2);
+    assert_eq!(
+        (placed.display.as_deref(), placed.desktop, placed.fullscreen),
+        (Some("1-2-3"), Some(2), false)
+    );
+    let loose = WindowInfo::new("A", "a.b", "t", frame).on_display("1-2-3");
+    assert_eq!(
+        (loose.display.as_deref(), loose.desktop, loose.fullscreen),
+        (Some("1-2-3"), None, false)
+    );
+    let full = WindowInfo::new("A", "a.b", "t", frame).in_full_screen("1-2-3");
+    assert_eq!(
+        (full.display.as_deref(), full.desktop, full.fullscreen),
+        (Some("1-2-3"), None, true)
+    );
+
+    let mut layout = sample();
+    layout.windows = vec![placed, full];
+    let json = layout.to_json();
+    assert!(json.contains("\"display\": \"1-2-3\""), "{json}");
+    assert!(json.contains("\"desktop\": 2"), "{json}");
+    assert!(json.contains("\"fullscreen\": true"), "{json}");
+    assert_eq!(Layout::from_json(&json).unwrap(), layout);
+}
+
+#[test]
+fn a_profile_remembers_each_screens_desktops_and_what_was_in_view() {
+    let mut layout = sample();
+    layout.desktops = vec![
+        SavedScreen {
+            display: "1-2-3".into(),
+            desktops: 4,
+            showing: Showing::Desktop(2),
+        },
+        SavedScreen {
+            display: "4-5-6".into(),
+            desktops: 1,
+            showing: Showing::FullScreen {
+                bundle_id: "com.mitchellh.ghostty".into(),
+                title: "zsh".into(),
+            },
+        },
+        SavedScreen {
+            display: "7-8-9".into(),
+            desktops: 1,
+            showing: Showing::Unknown,
+        },
+    ];
+    let json = layout.to_json();
+    assert!(json.contains("\"desktop\": 2"), "{json}");
+    assert!(json.contains("\"fullScreen\""), "{json}");
+    assert!(
+        json.contains("\"bundleId\": \"com.mitchellh.ghostty\""),
+        "{json}"
+    );
+    assert!(json.contains("\"unknown\""), "{json}");
+    assert_eq!(Layout::from_json(&json).unwrap(), layout);
+    assert_eq!(layout.screen("4-5-6"), Some(&layout.desktops[1]));
+    assert_eq!(layout.screen("nope"), None);
+    assert!(layout.knows_desktops());
+    assert!(!sample().knows_desktops());
+}
+
+#[test]
+fn new_types_are_cloneable_and_printable() {
+    let screen = SavedScreen {
+        display: "d".into(),
+        desktops: 1,
+        showing: Showing::Desktop(1),
+    };
+    assert_eq!(screen.clone(), screen);
+    assert!(format!("{screen:?}").starts_with("SavedScreen"));
+    assert_eq!(format!("{:?}", Showing::Unknown), "Unknown");
 }

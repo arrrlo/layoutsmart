@@ -1,17 +1,17 @@
 //! The real implementations of the core's ports.
 
-use crate::{apps, ax, screens, server, spaces};
+use crate::{apps, ax, input, screens, server, shortcuts, spaces};
 use layoutsmart_core::desktops::RawScreen;
 use layoutsmart_core::displays::RawDisplay;
 use layoutsmart_core::geometry::Rect;
-use layoutsmart_core::ports::{Clock, WindowSystem};
+use layoutsmart_core::ports::{Clock, Shortcut, WindowSystem};
 use layoutsmart_core::store::{ProfileStore, default_dir};
 use layoutsmart_core::windows::{RawWindow, ServerWindow};
 use objc2_application_services::AXUIElement;
 use objc2_core_foundation::CFRetained;
 use std::cell::RefCell;
 use std::env;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 type Element = CFRetained<AXUIElement>;
 
@@ -137,6 +137,48 @@ impl WindowSystem for MacSystem {
             .borrow()
             .get(handle)
             .is_some_and(|element| ax::set_frame(element, frame))
+    }
+
+    fn frame(&self, handle: usize) -> Option<Rect> {
+        self.elements
+            .borrow()
+            .get(handle)
+            .and_then(|element| ax::frame(element))
+    }
+
+    fn set_fullscreen(&self, handle: usize, on: bool) -> bool {
+        self.elements
+            .borrow()
+            .get(handle)
+            .is_some_and(|element| ax::set_fullscreen(element, on))
+    }
+
+    fn desktop_shortcuts(&self) -> [Shortcut; 2] {
+        shortcuts::desktop_shortcuts()
+    }
+
+    fn press_desktop_key(&self, right: bool) {
+        input::press_desktop_key(right);
+    }
+
+    fn pointer(&self) -> (f64, f64) {
+        input::pointer()
+    }
+
+    fn park_pointer(&self, x: f64, y: f64) {
+        input::park_pointer(x, y);
+    }
+
+    fn pause(&self, milliseconds: u64) {
+        std::thread::sleep(Duration::from_millis(milliseconds));
+    }
+
+    fn front_app(&self) -> Option<i32> {
+        apps::front_app()
+    }
+
+    fn activate(&self, pid: i32) {
+        ax::bring_to_front(pid);
     }
 }
 

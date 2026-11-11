@@ -75,3 +75,25 @@ fn size_new_and_debug() {
     );
     assert_eq!(r.clone(), r);
 }
+
+#[test]
+fn a_rectangle_is_centred_within_another_keeping_its_size() {
+    let screen = Rect::new(2000.0, -400.0, 1000.0, 1600.0);
+    assert_eq!(
+        Rect::new(5.0, 6.0, 700.0, 500.0).centred_in(&screen),
+        Rect::new(2150.0, 150.0, 700.0, 500.0)
+    );
+}
+
+#[test]
+fn a_rectangle_too_big_for_the_other_is_cut_down_to_it() {
+    let screen = Rect::new(2000.0, -400.0, 1000.0, 1600.0);
+    assert_eq!(
+        Rect::new(5.0, 6.0, 1200.0, 1700.0).centred_in(&screen),
+        screen
+    );
+    assert_eq!(
+        Rect::new(5.0, 6.0, 1200.0, 500.0).centred_in(&screen),
+        Rect::new(2000.0, 150.0, 1000.0, 500.0)
+    );
+}

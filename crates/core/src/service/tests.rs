@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::WindowInfo;
+use crate::model::{SavedScreen, Showing, WindowInfo};
 use crate::names::NameError;
 use crate::store::{ProfileStore, StoreError};
 use crate::testing::*;
@@ -163,8 +163,9 @@ fn lists_displays_and_managed_windows() {
     let backend = with(&sys, &store, &CLOCK);
     let names: Vec<String> = displays(&backend).into_iter().map(|d| d.name).collect();
     assert_eq!(names, ["Built-in", "DELL"]);
-    let titles: Vec<String> = windows(&backend)
+    let titles: Vec<String> = inventory(&backend)
         .unwrap()
+        .open(false)
         .into_iter()
         .map(|w| w.title)
         .collect();
@@ -307,15 +308,111 @@ fn inventory_needs_permission() {
 }
 
 #[test]
-fn the_plain_window_list_leaves_out_hidden_and_full_screen_windows() {
+fn the_windows_a_profile_is_about_are_all_of_them_or_the_plain_ones_in_view() {
     let (_dir, store) = temp_store();
     let sys = desk_with_desktops();
-    let apps: Vec<String> = windows(&with(&sys, &store, &CLOCK))
+    let all = inventory(&with(&sys, &store, &CLOCK)).unwrap();
+    let apps = |whole: bool| -> Vec<(String, bool)> {
+        all.open(whole)
+            .into_iter()
+            .map(|window| (window.app, window.handle.is_some()))
+            .collect()
+    };
+    assert_eq!(apps(false), [("Safari".to_string(), true)]);
+    // Full-screen windows come last; the window no app handed out has no handle.
+    assert_eq!(
+        apps(true),
+        [
+            ("Safari".to_string(), true),
+            ("Mail".to_string(), true),
+            ("Notes".to_string(), false),
+            ("Ghostty".to_string(), true),
+        ]
+    );
+}
+
+#[test]
+fn save_records_where_every_window_is_and_what_each_screen_shows() {
+    let (_dir, store) = temp_store();
+    let sys = desk_with_desktops();
+    let saved = save(&with(&sys, &store, &CLOCK), "home").unwrap();
+    assert_eq!(saved.windows, 4);
+    let layout = store.load("home").unwrap();
+    assert_eq!(
+        layout.windows,
+        [
+            WindowInfo::new("Safari", "com.test.safari", "Apple", frame(100.0))
+                .on_desktop("1-2-20", 2),
+            WindowInfo::new("Mail", "com.test.mail", "Inbox", frame(500.0)).on_desktop("1-2-20", 1),
+            WindowInfo::new("Notes", "com.test.notes", "", frame(700.0)).on_desktop("1-2-20", 1),
+            WindowInfo::new("Ghostty", "com.test.ghostty", "zsh", frame(2000.0))
+                .in_full_screen("1-2-10"),
+        ]
+    );
+    assert_eq!(
+        layout.desktops,
+        [
+            SavedScreen {
+                display: "1-2-20".into(),
+                desktops: 2,
+                showing: Showing::Desktop(2),
+            },
+            SavedScreen {
+                display: "1-2-10".into(),
+                desktops: 0,
+                showing: Showing::FullScreen {
+                    bundle_id: "com.test.ghostty".into(),
+                    title: "zsh".into(),
+                },
+            },
+        ]
+    );
+}
+
+#[test]
+fn what_a_screen_shows_is_unknown_when_macos_does_not_say_or_no_window_is_there() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk_with_desktops();
+    // DELL: the desktop in view is not in its row. Built-in: a full-screen desktop that
+    // holds no window anyone knows.
+    sys.screens = vec![
+        screen(20, 9, &[(1, false), (2, false)]),
+        screen(10, 6, &[(5, true), (6, true)]),
+    ];
+    save(&with(&sys, &store, &CLOCK), "home").unwrap();
+    let showing: Vec<Showing> = store
+        .load("home")
         .unwrap()
+        .desktops
         .into_iter()
-        .map(|w| w.app)
+        .map(|screen| screen.showing)
         .collect();
-    assert_eq!(apps, ["Safari"]);
+    assert_eq!(showing, [Showing::Unknown, Showing::Unknown]);
+}
+
+#[test]
+fn a_full_screen_desktop_is_told_apart_by_screen_and_by_position() {
+    let (_dir, store) = temp_store();
+    let mut sys = desk_with_desktops();
+    // Built-in shows its second full-screen desktop, where Mail is; DELL has a
+    // full-screen desktop at the same position in its row, holding Safari.
+    sys.screens = vec![
+        screen(20, 1, &[(1, false), (2, true)]),
+        screen(10, 6, &[(5, true), (6, true)]),
+    ];
+    sys.windows[0].fullscreen = Some(true);
+    sys.windows[2].spaces = vec![6];
+    sys.windows[2].fullscreen = Some(true);
+    sys.server.truncate(3);
+    sys.server[2].spaces = vec![6];
+    save(&with(&sys, &store, &CLOCK), "home").unwrap();
+    assert_eq!(
+        store.load("home").unwrap().desktops[1].showing,
+        Showing::FullScreen {
+            bundle_id: "com.test.mail".into(),
+            title: "Inbox".into(),
+        }
+    );
 }
 
 #[test]
@@ -323,7 +420,7 @@ fn listing_windows_needs_permission_but_displays_do_not() {
     let (_dir, store) = temp_store();
     let sys = desk().untrusted();
     let backend = with(&sys, &store, &CLOCK);
-    assert_eq!(windows(&backend), Err(Error::NotTrusted));
+    assert_eq!(inventory(&backend), Err(Error::NotTrusted));
     assert_eq!(displays(&backend).len(), 2);
 }
 

@@ -1,6 +1,7 @@
 use super::*;
 use crate::displays::RawDisplay;
 use crate::geometry::Rect;
+use crate::ports::Shortcut;
 
 fn display(name: &str, serial: u32, uuid: Option<&str>) -> RawDisplay {
     RawDisplay {
@@ -52,6 +53,7 @@ fn place(display: &str, name: &str, kind: Kind, row: usize, showing: bool) -> Pl
         kind,
         row,
         showing,
+        everywhere: false,
     }
 }
 
@@ -89,8 +91,7 @@ fn a_window_with_no_known_desktop_has_no_place() {
     let map = two_screens();
     assert_eq!(map.place(&[]), None);
     assert_eq!(map.place(&[99]), None);
-    // Several ids: the first one that is known decides.
-    assert_eq!(map.place(&[99, 14, 11]).unwrap().kind, Kind::Desktop(3));
+    assert!(!map.place(&[99, 14]).unwrap().everywhere);
 }
 
 #[test]
@@ -204,4 +205,89 @@ fn types_are_cloneable_and_printable() {
     assert_eq!(p.clone(), p);
     assert!(format!("{p:?}").starts_with("Place"));
     assert_eq!(format!("{:?}", Kind::Desktop(1)), "Desktop(1)");
+}
+
+#[test]
+fn a_window_on_several_desktops_is_everywhere_and_counts_as_being_in_view() {
+    let map = two_screens();
+    // One of its desktops is in view: that is where it is.
+    assert_eq!(
+        map.place(&[11, 12, 14]),
+        Some(Place {
+            everywhere: true,
+            ..place("1-2-10", "Main", Kind::Desktop(2), 1, true)
+        })
+    );
+    // None is in view: the first known one.
+    assert_eq!(
+        map.place(&[99, 14, 11]),
+        Some(Place {
+            everywhere: true,
+            ..place("1-2-10", "Main", Kind::Desktop(3), 3, false)
+        })
+    );
+    assert_eq!(map.place(&[11, 12]).unwrap().label(), "Main · all desktops");
+}
+
+#[test]
+fn a_place_holds_its_own_desktop_number_only_unless_it_is_everywhere() {
+    let two = place("d", "D", Kind::Desktop(2), 1, true);
+    assert!(two.holds(2));
+    assert!(!two.holds(3));
+    assert!(!place("d", "D", Kind::FullScreen, 1, true).holds(1));
+    let everywhere = Place {
+        everywhere: true,
+        ..two
+    };
+    assert!(everywhere.holds(3));
+}
+
+#[test]
+fn a_row_counts_and_finds_its_ordinary_desktops() {
+    let map = two_screens();
+    let main = map.row("1-2-10").unwrap();
+    assert_eq!(main.desktops(), 3);
+    assert_eq!(main.row_of(1), Some(0));
+    assert_eq!(main.row_of(3), Some(3));
+    assert_eq!(main.row_of(4), None);
+    let side = map.row("1-2-20").unwrap();
+    assert_eq!(side.desktops(), 1);
+    assert_eq!(side.row_of(1), Some(1));
+}
+
+fn shortcut(enabled: Option<bool>, key: Option<i64>, modifiers: Option<i64>) -> Shortcut {
+    Shortcut {
+        enabled,
+        key,
+        modifiers,
+    }
+}
+
+#[test]
+fn desktops_can_be_stepped_through_only_with_the_standard_shortcuts() {
+    let untouched = shortcut(None, None, None);
+    assert!(steps_with_control_arrows(&[untouched, untouched]));
+    // As macOS writes them once the settings pane has been opened.
+    let left = shortcut(Some(true), Some(123), Some(8_650_752));
+    let right = shortcut(Some(true), Some(124), Some(8_650_752));
+    assert!(steps_with_control_arrows(&[left, right]));
+    // Older systems store Control alone.
+    let plain = shortcut(Some(true), Some(123), Some(262_144));
+    assert!(steps_with_control_arrows(&[plain, right]));
+
+    let off = shortcut(Some(false), Some(123), Some(8_650_752));
+    assert!(!steps_with_control_arrows(&[off, right]));
+    assert!(!steps_with_control_arrows(&[
+        left,
+        shortcut(Some(false), None, None)
+    ]));
+    // Another key.
+    assert!(!steps_with_control_arrows(&[right, right]));
+    assert!(!steps_with_control_arrows(&[left, left]));
+    // Other modifier keys: Control with Shift, with Option, with Command; Command alone;
+    // none at all.
+    for flags in [393_216, 786_432, 1_310_720, 1_048_576, 0] {
+        let changed = shortcut(Some(true), Some(124), Some(flags));
+        assert!(!steps_with_control_arrows(&[left, changed]), "{flags}");
+    }
 }

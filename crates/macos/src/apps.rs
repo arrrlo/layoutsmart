@@ -25,3 +25,10 @@ pub fn regular_apps() -> Vec<App> {
         .map(|app| describe(&app))
         .collect()
 }
+
+/// Process id of the app in front.
+pub fn front_app() -> Option<i32> {
+    NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .map(|app| app.processIdentifier())
+}

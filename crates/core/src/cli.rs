@@ -3,8 +3,8 @@
 use crate::desktops::{Kind, ScreenRow};
 use crate::displays::same_display_set;
 use crate::geometry::Rect;
-use crate::matcher::Move;
 use crate::model::DisplayInfo;
+use crate::restore::Entry;
 use crate::service::{self, Backend, Error, Inventory, Restored, Saved};
 use crate::text::plural;
 use crate::windows::LiveWindow;
@@ -118,7 +118,7 @@ fn saved_text(saved: &Saved) -> String {
     )
 }
 
-fn window_line(window: &Move) -> String {
+fn window_line(window: &Entry) -> String {
     let title = if window.title.is_empty() {
         "<untitled>"
     } else {
@@ -136,11 +136,12 @@ fn restored_text(restored: &Restored) -> String {
     text.extend(restored.moved.iter().map(window_line));
     if !restored.failed.is_empty() {
         text.push_str(&format!(
-            "Could not move {}:\n",
+            "Could not put back {}:\n",
             plural(restored.failed.len(), "window")
         ));
         text.extend(restored.failed.iter().map(window_line));
     }
+    text.extend(restored.notes.iter().map(|note| format!("{note}\n")));
     text
 }
 

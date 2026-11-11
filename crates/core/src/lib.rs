@@ -12,6 +12,7 @@ pub mod menu;
 pub mod model;
 pub mod names;
 pub mod ports;
+pub mod restore;
 pub mod service;
 pub mod startup;
 pub mod store;

@@ -1,11 +1,12 @@
 //! The operations behind both the CLI and the menu bar app.
 
-use crate::desktops::DesktopMap;
+use crate::desktops::{DesktopMap, Kind, ScreenRow};
 use crate::displays::display_infos;
-use crate::matcher::{Move, plan_restore};
-use crate::model::{DisplayInfo, Layout, WindowInfo};
+use crate::matcher::{Open, in_order};
+use crate::model::{DisplayInfo, Layout, SavedScreen, Showing};
 use crate::names::{self, NameError};
 use crate::ports::{Clock, WindowSystem};
+use crate::restore::{self, Entry};
 use crate::store::{ProfileStore, StoreError};
 use crate::timefmt::iso8601;
 use crate::windows::{LiveWindow, Unreached, live_windows, unreached};
@@ -68,9 +69,12 @@ pub struct Saved {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Restored {
     pub profile: String,
-    pub moved: Vec<Move>,
-    /// Windows that should have moved but refused.
-    pub failed: Vec<Move>,
+    /// Windows that were put back.
+    pub moved: Vec<Entry>,
+    /// Windows that are not where the profile has them, although it was tried.
+    pub failed: Vec<Entry>,
+    /// What the user should know about things that could not be done.
+    pub notes: Vec<String>,
 }
 
 fn require_trust(backend: &Backend) -> Result<(), Error> {
@@ -121,13 +125,53 @@ pub fn inventory(backend: &Backend) -> Result<Inventory, Error> {
     })
 }
 
-/// The windows version 0.1 handled: ordinary ones on the desktops in view.
-pub fn windows(backend: &Backend) -> Result<Vec<LiveWindow>, Error> {
-    let all = inventory(backend)?.windows;
-    Ok(all
-        .into_iter()
-        .filter(LiveWindow::is_plain_in_view)
-        .collect())
+impl Inventory {
+    /// The windows a profile is about: all of them or — when nothing is known about
+    /// desktops (`whole` is false) — the ordinary ones in view, which is all that
+    /// version 0.1 handled.
+    pub fn open(&self, whole: bool) -> Vec<Open> {
+        let reached = self
+            .windows
+            .iter()
+            .filter(|window| whole || window.is_plain_in_view())
+            .map(Open::reached);
+        let unreached = self.unreached.iter().filter(|_| whole).map(Open::unreached);
+        in_order(reached.chain(unreached).collect())
+    }
+}
+
+/// What a screen is showing, in a form that still means something later.
+fn showing(row: &ScreenRow, open: &[Open]) -> Showing {
+    let Some(index) = row.showing else {
+        return Showing::Unknown;
+    };
+    match row.kinds[index] {
+        Kind::Desktop(number) => Showing::Desktop(number),
+        Kind::FullScreen => open
+            .iter()
+            .find(|window| {
+                window
+                    .place
+                    .as_ref()
+                    .is_some_and(|place| place.display == row.display && place.row == index)
+            })
+            .map_or(Showing::Unknown, |window| Showing::FullScreen {
+                bundle_id: window.bundle_id.clone(),
+                title: window.title.clone(),
+            }),
+    }
+}
+
+fn saved_screens(desktops: &DesktopMap, open: &[Open]) -> Vec<SavedScreen> {
+    desktops
+        .rows()
+        .iter()
+        .map(|row| SavedScreen {
+            display: row.display.clone(),
+            desktops: row.desktops(),
+            showing: showing(row, open),
+        })
+        .collect()
 }
 
 /// The profile saved with the displays that are connected right now, if any.
@@ -137,14 +181,14 @@ pub fn matching_profile(backend: &Backend) -> Option<String> {
 
 pub fn save(backend: &Backend, name: &str) -> Result<Saved, Error> {
     let profile = names::validate(name)?;
+    let inventory = inventory(backend)?;
+    let open = inventory.open(inventory.desktops.is_known());
     let layout = Layout {
         profile: profile.clone(),
         saved_at: iso8601(backend.clock.unix_seconds()),
         displays: displays(backend),
-        windows: windows(backend)?
-            .iter()
-            .map(|w| WindowInfo::new(&w.app, &w.bundle_id, &w.title, w.frame))
-            .collect(),
+        windows: open.iter().map(Open::to_saved).collect(),
+        desktops: saved_screens(&inventory.desktops, &open),
     };
     backend.store.save(&layout)?;
     Ok(Saved {
@@ -156,15 +200,13 @@ pub fn save(backend: &Backend, name: &str) -> Result<Saved, Error> {
 }
 
 pub fn restore(backend: &Backend, name: &str) -> Result<Restored, Error> {
-    let live = windows(backend)?;
+    require_trust(backend)?;
     let layout = backend.store.load(name)?;
-    let (moved, failed) = plan_restore(&layout.windows, &live)
-        .into_iter()
-        .partition(|m| backend.sys.set_frame(m.handle, m.frame));
-    Ok(Restored {
-        profile: layout.profile,
-        moved,
-        failed,
+    restore::restore(backend, &layout).map(|report| Restored {
+        profile: layout.profile.clone(),
+        moved: report.moved,
+        failed: report.failed,
+        notes: report.notes,
     })
 }
 

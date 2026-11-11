@@ -13,8 +13,8 @@ publish = false
 layoutsmart-core.workspace = true
 libc = "0.2"
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSValue", "NSGeometry", "NSThread", "NSEnumerator", "NSObject", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSValue", "NSGeometry", "NSThread", "NSEnumerator", "NSObject", "NSUserDefaults", "objc2-core-foundation"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSWorkspace", "NSRunningApplication", "NSScreen", "NSGraphics"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFString", "CFArray", "CFDictionary", "CFNumber", "CFCGTypes", "CFData", "CFUUID"] }
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGDirectDisplay", "CGDisplayConfiguration", "CGError", "CGWindow"] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGDirectDisplay", "CGDisplayConfiguration", "CGError", "CGWindow", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation"] }
 objc2-application-services = { version = "0.3", default-features = false, features = ["std", "AXUIElement", "AXValue", "AXError", "AXAttributeConstants", "HIServices", "libc"] }

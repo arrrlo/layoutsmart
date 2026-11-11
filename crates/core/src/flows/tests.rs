@@ -1,10 +1,18 @@
 use super::*;
+use crate::geometry::Rect;
+use crate::ports::WindowSystem;
+use crate::restore::NO_STEPPING_NOTE;
+use crate::restore::testing::Sim;
 use crate::service::{self, Backend};
 use crate::store::ProfileStore;
 use crate::testing::Reply::{Cancel, No, Text, Yes};
 use crate::testing::*;
 
-fn session<'a>(sys: &'a FakeSystem, store: &'a ProfileStore, ui: &'a ScriptedUi) -> Session<'a> {
+fn session<'a>(
+    sys: &'a dyn WindowSystem,
+    store: &'a ProfileStore,
+    ui: &'a ScriptedUi,
+) -> Session<'a> {
     Session {
         backend: Backend {
             sys,
@@ -163,11 +171,62 @@ fn restore_lists_windows_that_refused_to_move() {
     sys.windows[0] = window("Safari", "", 900.0);
     sys.stuck = vec![0, 2];
     let ui = ScriptedUi::silent();
-    // Safari's title changed (to nothing), so it is paired by order after Mail.
+    // In the order of the profile; Safari's title is empty now.
     assert!(restore_flow(&session(&sys, &store, &ui), "home"));
     assert_eq!(
         ui.log(),
-        ["alert[2 windows didn’t move|Mail — Inbox\nSafari]"]
+        ["alert[2 windows couldn’t be put back|Safari\nMail — Inbox]"]
+    );
+}
+
+/// One screen with two desktops, the first in view, and a window on the second.
+fn sim_with_a_window_on_a_hidden_desktop() -> (Sim, u32) {
+    let sim = Sim::new().screen("Main", 10, Rect::new(0.0, 0.0, 2000.0, 1200.0), 2, 1);
+    let id = sim.window(
+        "Notes",
+        "list",
+        "Main",
+        2,
+        Rect::new(10.0, 20.0, 300.0, 200.0),
+    );
+    (sim, id)
+}
+
+#[test]
+fn restore_says_when_a_window_is_left_on_the_wrong_desktop_and_why() {
+    let (_dir, store) = temp_store();
+    let (sim, id) = sim_with_a_window_on_a_hidden_desktop();
+    let ui = ScriptedUi::silent();
+    let session = session(&sim, &store, &ui);
+    service::save(&session.backend, "home").unwrap();
+    sim.user_moves(id, "Main", 1, Rect::new(10.0, 20.0, 300.0, 200.0));
+    sim.shortcuts_on.set(false);
+
+    assert!(restore_flow(&session, "home"));
+    assert_eq!(
+        ui.log(),
+        [format!(
+            "alert[1 window couldn’t be put back|Notes — list\n\n{NO_STEPPING_NOTE}]"
+        )]
+    );
+}
+
+#[test]
+fn restore_says_when_only_the_desktops_in_view_could_not_be_put_back() {
+    let (_dir, store) = temp_store();
+    let (sim, _) = sim_with_a_window_on_a_hidden_desktop();
+    let ui = ScriptedUi::silent();
+    let session = session(&sim, &store, &ui);
+    service::save(&session.backend, "home").unwrap();
+    sim.user_shows("Main", 2);
+    sim.shortcuts_on.set(false);
+
+    assert!(restore_flow(&session, "home"));
+    assert_eq!(
+        ui.log(),
+        [format!(
+            "alert[“home” was restored, but not completely|{NO_STEPPING_NOTE}]"
+        )]
     );
 }
 
@@ -179,7 +238,10 @@ fn restore_reports_a_single_stuck_window_in_the_singular() {
     sys.stuck = vec![2];
     let ui = ScriptedUi::silent();
     assert!(restore_flow(&session(&sys, &store, &ui), "home"));
-    assert_eq!(ui.log(), ["alert[1 window didn’t move|Mail — Inbox]"]);
+    assert_eq!(
+        ui.log(),
+        ["alert[1 window couldn’t be put back|Mail — Inbox]"]
+    );
     assert_eq!(sys.moves(), [(0, frame(100.0))]);
 }
 
