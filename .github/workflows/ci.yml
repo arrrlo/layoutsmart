@@ -38,7 +38,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # cargo-mutants counts its shards from 0.
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - run: rustup show
@@ -73,6 +74,9 @@ jobs:
           security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$SIGN_P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$SIGN_P12_PASSWORD" "$KEYCHAIN" > /dev/null
           rm "$RUNNER_TEMP/signing.p12"
+          # codesign only finds an identity in a keychain that is on the search list.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security find-identity -p codesigning "$KEYCHAIN"
           echo "LAYOUTSMART_SIGN_IDENTITY=Layoutsmart Self-Signed" >> "$GITHUB_ENV"
           echo "LAYOUTSMART_SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
       - run: cargo xtask pkg
