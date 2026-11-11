@@ -17,7 +17,7 @@
 //!   pressed while the pointer is on it;
 //! * an app hands out a window only once its desktop has been in view.
 
-use crate::desktops::{DesktopMap, steps_with_control_arrows};
+use crate::desktops::{DesktopMap, RawScreen, steps_with_control_arrows};
 use crate::displays::{RawDisplay, display_identity};
 use crate::geometry::Rect;
 use crate::matcher::{Open, Pair, Step, pair};
@@ -164,6 +164,31 @@ fn identity(display: &RawDisplay) -> String {
     display_identity(display.vendor, display.model, display.serial)
 }
 
+fn fullscreen_desktops(screens: &[RawScreen]) -> usize {
+    screens
+        .iter()
+        .flat_map(|screen| &screen.spaces)
+        .filter(|space| space.fullscreen)
+        .count()
+}
+
+/// Whether macOS has finished taking a window into (`on`) or out of full screen, going
+/// by the desktops before and now. Going in, it makes the new desktop at once but shows
+/// it only when its animation is over; coming out, the desktop goes when it is over.
+fn transition_is_over(before: &[RawScreen], now: &[RawScreen], on: bool) -> bool {
+    if on {
+        let existed = |id: u64| {
+            before
+                .iter()
+                .flat_map(|screen| &screen.spaces)
+                .any(|space| space.id == id)
+        };
+        now.iter().any(|screen| !existed(screen.current))
+    } else {
+        fullscreen_desktops(now) < fullscreen_desktops(before)
+    }
+}
+
 /// Where in its row the full-screen window of this app on this display is: the one with
 /// this title, or else the first.
 fn fullscreen_row(scene: &Scene, display: &str, bundle_id: &str, title: &str) -> Option<usize> {
@@ -246,15 +271,6 @@ impl<'a> Engine<'a> {
             .map(|display| display.bounds)
     }
 
-    fn fullscreen_desktops(&self) -> usize {
-        self.sys
-            .screens()
-            .iter()
-            .flat_map(|screen| &screen.spaces)
-            .filter(|space| space.fullscreen)
-            .count()
-    }
-
     /// Puts the pointer in the middle of a display, which is how macOS is told which
     /// screen a shortcut is meant for.
     fn park(&mut self, display: &str) -> bool {
@@ -308,12 +324,12 @@ impl<'a> Engine<'a> {
     /// Switches a window into or out of full screen and waits for macOS to finish.
     /// True if it happened.
     fn toggle(&mut self, handle: usize, on: bool) -> bool {
-        let before = self.fullscreen_desktops();
+        let before = self.sys.screens();
         if !self.sys.set_fullscreen(handle, on) {
             return false;
         }
         self.disturbed = true;
-        let changed = self.wait(|engine| engine.fullscreen_desktops() != before);
+        let changed = self.wait(|engine| transition_is_over(&before, &engine.sys.screens(), on));
         self.sys.pause(FULLSCREEN_SETTLE_MS);
         changed
     }

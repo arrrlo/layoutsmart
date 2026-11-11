@@ -587,6 +587,49 @@ fn a_full_screen_change_is_waited_for() {
 }
 
 #[test]
+fn a_screen_is_given_time_to_arrive_at_a_new_full_screen_desktop() {
+    // macOS makes the full-screen desktop first and shows it when its animation is over.
+    // Going on before that would leave the screen on the full-screen desktop in the end.
+    let rig = Rig::new(two_screens());
+    let notes = rig.sim.window("Notes", "list", "Side", 1, S);
+    rig.sim.user_fullscreen(notes, true);
+    rig.sim.user_shows("Side", 1);
+    let before = rig.save();
+    rig.sim.user_fullscreen(notes, false);
+    rig.sim.switch_lag.set(6);
+
+    assert_eq!(rig.restore().failed, []);
+    let waited = rig.sim.waited_ms.get();
+    rig.sim.time_passes();
+    assert_eq!(rig.sim.snapshot(), before);
+    assert_eq!(rig.sim.row("Side"), "[1] F:Notes list");
+    // Six polls for the screen to arrive, then one step back to the desktop it showed.
+    assert_eq!(
+        waited,
+        6 * POLL_MS + FULLSCREEN_SETTLE_MS + POLL_MS + STEP_SETTLE_MS
+    );
+}
+
+#[test]
+fn leaving_full_screen_is_over_when_its_desktop_is_gone() {
+    let rig = Rig::new(two_screens());
+    let notes = rig.sim.window("Notes", "list", "Main", 2, F);
+    let other = rig.sim.window("Mail", "inbox", "Side", 1, S);
+    let before = rig.save();
+    rig.sim.user_fullscreen(notes, true);
+    rig.sim.user_fullscreen(other, true);
+    rig.sim.fullscreen_lag.set(3);
+
+    assert_eq!(rig.restore().failed, []);
+    assert_eq!(rig.sim.snapshot(), before);
+    // Each of the two is waited for in turn.
+    assert_eq!(
+        rig.sim.waited_ms.get(),
+        2 * (3 * POLL_MS + FULLSCREEN_SETTLE_MS)
+    );
+}
+
+#[test]
 fn a_full_screen_change_that_never_comes_is_given_up_on() {
     let rig = Rig::new(two_screens());
     let notes = rig.sim.window("Notes", "list", "Side", 1, S);

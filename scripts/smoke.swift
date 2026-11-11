@@ -35,6 +35,21 @@ func children(_ element: AXUIElement) -> [AXUIElement] {
 
 func role(_ element: AXUIElement) -> String { (attribute(element, "AXRole") as? String) ?? "" }
 func title(_ element: AXUIElement) -> String { (attribute(element, "AXTitle") as? String) ?? "" }
+/// What a control is called: its title or, for one that has none, its description.
+func label(_ element: AXUIElement) -> String {
+    let named = title(element)
+    return named.isEmpty ? ((attribute(element, "AXDescription") as? String) ?? "") : named
+}
+/// Every text and number an element reports about itself, for when it is not what was expected.
+func everything(_ element: AXUIElement) -> [String] {
+    var names: CFArray?
+    AXUIElementCopyAttributeNames(element, &names)
+    return ((names as? [String]) ?? []).compactMap { name in
+        let value = attribute(element, name)
+        let text = (value as? String) ?? (value as? NSNumber)?.stringValue
+        return text.map { "\(name)=\($0)" }
+    }
+}
 
 /// Depth-first search for an element with this role (and title, if given).
 func find(_ root: AXUIElement, role wanted: String, title wantedTitle: String? = nil, depth: Int = 8) -> AXUIElement? {
@@ -235,7 +250,9 @@ let tabs = wait("the desktop tabs") { () -> [AXUIElement]? in
     let found = all(dashboard, role: "AXRadioButton")
     return found.isEmpty ? nil : found
 }
-let firstDesktop: AXUIElement = wait("a tab for the first desktop") { tabs.first { title($0) == "Desktop 1" } }
+let firstDesktop: AXUIElement = wait("a tab for the first desktop — the tabs are \(tabs.map(everything))") {
+    tabs.first { label($0) == "Desktop 1" }
+}
 press(firstDesktop)
 check(poll(seconds: 5) { (attribute(firstDesktop, "AXValue") as? Int) == 1 }, "clicking a desktop's tab selects it")
 

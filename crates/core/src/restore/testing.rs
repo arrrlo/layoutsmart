@@ -56,6 +56,15 @@ struct Window {
     windowed_frame: Rect,
 }
 
+/// Something that happens once enough time has passed.
+#[derive(Clone, Copy)]
+enum Later {
+    /// A window enters or leaves full screen.
+    Toggle(u32, bool),
+    /// A screen (by position) shows a desktop (by id).
+    Show(usize, u64),
+}
+
 /// The process id of the app the pretend user is working in.
 pub const FRONT_APP: i32 = 77;
 
@@ -75,7 +84,10 @@ pub struct Sim {
     pub keys_work: Cell<bool>,
     /// Full-screen changes take effect only after this many `pause` calls.
     pub fullscreen_lag: Cell<u32>,
-    pending: RefCell<Vec<(u32, u32, bool)>>,
+    /// A screen shows a new full-screen desktop only this many `pause` calls after the
+    /// desktop has appeared (the animation is still running).
+    pub switch_lag: Cell<u32>,
+    pending: RefCell<Vec<(u32, Later)>>,
     /// Everything that was done to the desktop, in order.
     log: RefCell<Vec<String>>,
     /// How often every app was asked for its windows.
@@ -97,6 +109,7 @@ impl Sim {
             shortcuts_on: Cell::new(true),
             keys_work: Cell::new(true),
             fullscreen_lag: Cell::new(0),
+            switch_lag: Cell::new(0),
             pending: RefCell::new(Vec::new()),
             log: RefCell::new(Vec::new()),
             looks: Cell::new(0),
@@ -252,7 +265,13 @@ impl Sim {
             id: space,
             fullscreen: true,
         });
-        screen.current = space;
+        if self.switch_lag.get() == 0 {
+            screen.current = space;
+        } else {
+            self.pending
+                .borrow_mut()
+                .push((self.switch_lag.get(), Later::Show(index, space)));
+        }
         window.windowed_frame = window.frame;
         window.frame = screen.bounds;
         window.space = space;
@@ -444,6 +463,13 @@ impl Sim {
         self.log.borrow_mut().clear();
         self.waited_ms.set(0);
         self.looks.set(0);
+    }
+
+    /// Lets time pass, so that whatever macOS is still in the middle of gets finished.
+    pub fn time_passes(&self) {
+        let waited = self.waited_ms.get();
+        (0..50).for_each(|_| self.pause(0));
+        self.waited_ms.set(waited);
     }
 
     /// Puts the pointer somewhere without it counting as something done.
@@ -661,7 +687,7 @@ impl WindowSystem for Sim {
         } else {
             self.pending
                 .borrow_mut()
-                .push((self.fullscreen_lag.get(), id, on));
+                .push((self.fullscreen_lag.get(), Later::Toggle(id, on)));
         }
         true
     }
@@ -720,19 +746,23 @@ impl WindowSystem for Sim {
 
     fn pause(&self, milliseconds: u64) {
         self.waited_ms.set(self.waited_ms.get() + milliseconds);
-        let due: Vec<(u32, bool)> = {
+        let due: Vec<Later> = {
             let mut pending = self.pending.borrow_mut();
             pending.iter_mut().for_each(|entry| entry.0 -= 1);
             let due = pending
                 .iter()
                 .filter(|entry| entry.0 == 0)
-                .map(|entry| (entry.1, entry.2))
+                .map(|entry| entry.1)
                 .collect();
             pending.retain(|entry| entry.0 > 0);
             due
         };
-        due.into_iter()
-            .for_each(|(id, on)| self.toggle_fullscreen(id, on));
+        for event in due {
+            match event {
+                Later::Toggle(id, on) => self.toggle_fullscreen(id, on),
+                Later::Show(screen, space) => self.screens.borrow_mut()[screen].current = space,
+            }
+        }
     }
 
     fn front_app(&self) -> Option<i32> {
